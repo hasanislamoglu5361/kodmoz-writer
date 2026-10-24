@@ -14,6 +14,8 @@ for item in Package.swift main.swift build-app.sh publish.sh publish-screenshots
 done
 mkdir -p "$publish_workspace/source/docs/screenshots"
 cp docs/screenshots/*.jpg "$publish_workspace/source/docs/screenshots/"
+mkdir -p "$publish_workspace/source/scripts"
+cp scripts/capture-screenshots.sh "$publish_workspace/source/scripts/"
 (
     cd "$publish_workspace/source"
     if git rev-parse --verify HEAD >/dev/null 2>&1; then
@@ -21,7 +23,7 @@ cp docs/screenshots/*.jpg "$publish_workspace/source/docs/screenshots/"
     else
         git checkout -B main
     fi
-    git add Package.swift main.swift build-app.sh publish.sh publish-screenshots.sh README.md RELEASE_NOTES.md .gitignore AppIcon.png AppIcon.icns docs/screenshots
+    git add Package.swift main.swift build-app.sh publish.sh publish-screenshots.sh README.md RELEASE_NOTES.md .gitignore AppIcon.png AppIcon.icns docs/screenshots scripts
     if ! git diff --cached --quiet; then
         git -c user.name='Hasan İslamoğlu' -c user.email='hasanislamoglu5361@users.noreply.github.com' commit -m 'Release Kodmoz Writer 1.3: design refresh, new-writing button and layout fixes'
     fi
