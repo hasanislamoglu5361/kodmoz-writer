@@ -16,6 +16,12 @@ Gün batımı arka planı, üstten başlayan ortalanmış yazı sütunu ve zengi
 
 <img src="docs/screenshots/writing.jpg" alt="Kodmoz Writer tam ekran yazı alanı ve gün batımı arka planı" width="900" />
 
+### Not menüsü
+
+Sol kenara fareyle gelince veya `⇧⌘L` ile açılan cam efektli menü; notlar, güncelleme zamanları, kelime sayıları ve gradyanlı **Yeni yazı** düğmesi.
+
+<img src="docs/screenshots/sidebar.jpg" alt="Kodmoz Writer not menüsü: yazı listesi ve yeni yazı düğmesi" width="900" />
+
 ### Renkler ve manzaralar
 
 On hazır renk, on hazır manzara ve kişisel renk/görsel seçimi. Renkler nokta ve adlarıyla, manzaralar küçük resimleriyle listelenir; etkin seçim vurgulanır.
@@ -104,6 +110,7 @@ Derleme çıktısı `dist/Kodmoz Writer.app` konumuna yazılır. Script, simgeyi
 | `AppIcon.icns` | macOS uygulama simgesi |
 | `RELEASE_NOTES.md` | Sürüm değişiklikleri |
 | `docs/screenshots/` | README’deki gerçek uygulama ekran görüntüleri |
+| `scripts/capture-screenshots.sh` | Örnek verilerle güncel ekran görüntülerini üretir |
 | `publish-screenshots.sh` | README ve ekran görüntülerini GitHub CLI ile güncelleme |
 
 ## 1.2 sürümü
@@ -130,4 +137,10 @@ README ve ekran görüntülerini mevcut depoda güncellemek için:
 bash publish-screenshots.sh
 ```
 
-Bu komut yalnızca README’yi ve üç ekran görüntüsünü günceller; yeni uygulama sürümü yayımlamaz.
+Bu komut yalnızca README’yi ve dört ekran görüntüsünü günceller; yeni uygulama sürümü yayımlamaz.
+
+Ekran görüntüleri uygulamanın kendi `--snapshot` kipinde, geçici bir veri klasörü ve örnek notlarla üretilir; kişisel notlar veya tercihler yayımlanan görsellere yansımaz. Yeniden üretmek için:
+
+```sh
+bash scripts/capture-screenshots.sh
+```
