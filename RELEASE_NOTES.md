@@ -1,4 +1,12 @@
-# Kodmoz Writer 1.1
+# Kodmoz Writer 1.2
+
+- Her notta eklenme ve son güncellenme tarihi.
+- Tarih ve başlığa göre altı sıralama seçeneği; tercih korunur.
+- Notları onayla Çöp Sepeti’ne taşıma; son not silinince boş not açma.
+- Notu açma/kapatma tarihi değiştirmez.
+- Eski notlara dosya tarihleri üzerinden geriye uyumlu metadata eklenmesi.
+
+## Önceki sürümden özellikler
 
 - Kodmoz Writer adı ve özel macOS uygulama simgesi.
 - Ekranın tamamını kaplayan arka plan ve yatayda ortalanmış metin sütunu.

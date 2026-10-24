@@ -1,5 +1,24 @@
 import AppKit
 
+struct NoteDates: Codable {
+    var createdAt: Date
+    var updatedAt: Date
+}
+
+enum NoteSort: Int, CaseIterable {
+    case updatedNewest, updatedOldest, createdNewest, createdOldest, titleAZ, titleZA
+    var title: String {
+        switch self {
+        case .updatedNewest: "Güncelleme: en yeni önce"
+        case .updatedOldest: "Güncelleme: en eski önce"
+        case .createdNewest: "Eklenme: en yeni önce"
+        case .createdOldest: "Eklenme: en eski önce"
+        case .titleAZ: "Başlık: A → Z"
+        case .titleZA: "Başlık: Z → A"
+        }
+    }
+}
+
 struct Palette {
     let name: String
     let color: NSColor
@@ -118,6 +137,50 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextViewDelegate, NS
     let noteList = NSStackView()
     var noteIDs: [String] = []
     var currentNoteID = ""
+    var currentNoteDirty = false
+    var noteDates: [String: NoteDates] = [:]
+    let sortPicker = NSPopUpButton()
+    let sidebarWidth: CGFloat = 340
+    let dateFormatter: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "tr_TR")
+        formatter.dateFormat = "dd MMM yyyy · HH:mm:ss"
+        return formatter
+    }()
+    var sortOrder: NoteSort { NoteSort(rawValue: defaults.integer(forKey: "noteSort")) ?? .updatedNewest }
+    var metadataURL: URL { saveURL.deletingLastPathComponent().appendingPathComponent("NoteDates.json") }
+    func persistDates() throws {
+        try JSONEncoder().encode(noteDates).write(to: metadataURL, options: .atomic)
+    }
+    func ensureDates(_ id: String) {
+        guard noteDates[id] == nil else { return }
+        let values = try? noteURL(id).resourceValues(forKeys: [.creationDateKey, .contentModificationDateKey])
+        let modified = values?.contentModificationDate ?? Date()
+        let created = min(values?.creationDate ?? modified, modified)
+        noteDates[id] = NoteDates(createdAt: created, updatedAt: modified)
+    }
+    func sortNotes() {
+        let order = sortOrder
+        let titles = Dictionary(uniqueKeysWithValues: noteIDs.map { ($0, titleForNote($0)) })
+        noteIDs.sort { left, right in
+            let lhs = noteDates[left] ?? NoteDates(createdAt: .distantPast, updatedAt: .distantPast)
+            let rhs = noteDates[right] ?? NoteDates(createdAt: .distantPast, updatedAt: .distantPast)
+            switch order {
+            case .updatedNewest, .updatedOldest:
+                if lhs.updatedAt != rhs.updatedAt { return order == .updatedNewest ? lhs.updatedAt > rhs.updatedAt : lhs.updatedAt < rhs.updatedAt }
+            case .createdNewest, .createdOldest:
+                if lhs.createdAt != rhs.createdAt { return order == .createdNewest ? lhs.createdAt > rhs.createdAt : lhs.createdAt < rhs.createdAt }
+            case .titleAZ, .titleZA:
+                let result = (titles[left] ?? "").localizedStandardCompare(titles[right] ?? "")
+                if result != .orderedSame { return order == .titleAZ ? result == .orderedAscending : result == .orderedDescending }
+            }
+            return left < right
+        }
+    }
+    @objc func changeSort(_ sender: NSPopUpButton) {
+        defaults.set(sender.selectedTag(), forKey: "noteSort")
+        rebuildNotes()
+    }
     var loadingNote = false
     var eventMonitor: Any?
     var immersive = true
@@ -135,6 +198,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextViewDelegate, NS
     func loadNotes() {
         do {
             try FileManager.default.createDirectory(at: notesFolder, withIntermediateDirectories: true)
+            if FileManager.default.fileExists(atPath: metadataURL.path) {
+                noteDates = try JSONDecoder().decode([String: NoteDates].self, from: Data(contentsOf: metadataURL))
+            }
             noteIDs = try FileManager.default.contentsOfDirectory(at: notesFolder, includingPropertiesForKeys: [.creationDateKey])
                 .filter { $0.pathExtension == "rtf" }
                 .sorted { ((try? $0.resourceValues(forKeys: [.creationDateKey]).creationDate) ?? .distantPast) > ((try? $1.resourceValues(forKeys: [.creationDateKey]).creationDate) ?? .distantPast) }
@@ -142,7 +208,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextViewDelegate, NS
             if noteIDs.isEmpty {
                 let id = UUID().uuidString
                 // Preserve the original draft and migrate a copy.
-                if FileManager.default.fileExists(atPath: saveURL.path) {
+                if !defaults.bool(forKey: "legacyDraftMigrated") && FileManager.default.fileExists(atPath: saveURL.path) {
                     try FileManager.default.copyItem(at: saveURL, to: noteURL(id))
                 } else {
                     let data = NSAttributedString(string: "").rtf(from: NSRange(location: 0, length: 0), documentAttributes: [:])!
@@ -150,6 +216,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextViewDelegate, NS
                 }
                 noteIDs = [id]
             }
+            for id in noteIDs { ensureDates(id) }
+            try persistDates()
+            defaults.set(true, forKey: "legacyDraftMigrated")
+            sortNotes()
             let last = defaults.string(forKey: "activeNote") ?? ""
             openNote(noteIDs.contains(last) ? last : noteIDs[0], savingCurrent: false)
         } catch { showError(error) }
@@ -164,7 +234,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextViewDelegate, NS
             loadingNote = true
             editor.textStorage?.setAttributedString(text)
             editor.undoManager?.removeAllActions()
-            currentNoteID = id; defaults.set(id, forKey: "activeNote")
+            currentNoteID = id; currentNoteDirty = false; defaults.set(id, forKey: "activeNote")
             updateInk(); editor.setSelectedRange(NSRange(location: 0, length: 0))
             loadingNote = false
             editor.scrollRangeToVisible(NSRange(location: 0, length: 0))
@@ -178,10 +248,38 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextViewDelegate, NS
         do {
             let data = NSAttributedString(string: "", attributes: [.font: NSFont.systemFont(ofSize: 24)]).rtf(from: NSRange(location: 0, length: 0), documentAttributes: [:])!
             try data.write(to: noteURL(id), options: .atomic)
-            noteIDs.insert(id, at: 0); openNote(id, savingCurrent: false)
+            let now = Date(); noteDates[id] = NoteDates(createdAt: now, updatedAt: now)
+            noteIDs.insert(id, at: 0)
+            try persistDates()
+            openNote(id, savingCurrent: false)
         } catch { showError(error) }
     }
-    @objc func selectNote(_ sender: NSButton) { openNote(noteIDs[sender.tag]) }
+    @objc func selectNote(_ sender: NSButton) {
+        guard let id = sender.identifier?.rawValue, noteIDs.contains(id) else { return }
+        openNote(id)
+    }
+    @objc func deleteNote(_ sender: NSButton) {
+        guard let id = sender.identifier?.rawValue, noteIDs.contains(id) else { return }
+        let alert = NSAlert()
+        alert.messageText = "Yazıyı sil?"
+        alert.informativeText = "“\(titleForNote(id))” Çöp Sepeti’ne taşınacak. Gerekirse Finder’dan geri alabilirsin."
+        alert.addButton(withTitle: "Çöp Sepeti’ne Taşı")
+        alert.addButton(withTitle: "İptal")
+        alert.beginSheetModal(for: window) { response in
+            guard response == .alertFirstButtonReturn, self.saveCurrentNote() else { return }
+            do {
+                try FileManager.default.trashItem(at: self.noteURL(id), resultingItemURL: nil)
+                self.noteIDs.removeAll { $0 == id }
+                if id == self.currentNoteID {
+                    self.currentNoteID = ""; self.currentNoteDirty = false
+                    if let next = self.noteIDs.first { self.openNote(next, savingCurrent: false) }
+                    else { self.newNote() }
+                }
+                self.rebuildNotes()
+                self.sidebar.isHidden = false
+            } catch { self.showError(error) }
+        }
+    }
     func titleForNote(_ id: String) -> String {
         let text: String
         if id == currentNoteID { text = editor.string }
@@ -190,29 +288,50 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextViewDelegate, NS
         return title.isEmpty ? "Yeni yazı" : String(title.prefix(48))
     }
     func rebuildNotes() {
+        sortNotes()
         for view in noteList.arrangedSubviews { noteList.removeArrangedSubview(view); view.removeFromSuperview() }
-        for (i, id) in noteIDs.enumerated() {
-            let button = NSButton(title: (id == currentNoteID ? "●  " : "    ") + titleForNote(id), target: self, action: #selector(selectNote))
-            button.tag = i; button.alignment = .left; button.bezelStyle = .recessed
-            button.font = .systemFont(ofSize: 14); button.lineBreakMode = .byTruncatingTail
-            button.heightAnchor.constraint(equalToConstant: 38).isActive = true
-            noteList.addArrangedSubview(button)
+        for id in noteIDs {
+            let button = NSButton(title: (id == currentNoteID ? "●  " : "") + titleForNote(id), target: self, action: #selector(selectNote))
+            button.identifier = NSUserInterfaceItemIdentifier(id)
+            button.alignment = .left; button.bezelStyle = .recessed
+            button.font = .systemFont(ofSize: 14, weight: id == currentNoteID ? .semibold : .regular)
+            button.lineBreakMode = .byTruncatingTail
+            button.heightAnchor.constraint(equalToConstant: 30).isActive = true
+            let delete = NSButton(image: NSImage(systemSymbolName: "trash", accessibilityDescription: "Yazıyı sil")!, target: self, action: #selector(deleteNote))
+            delete.identifier = NSUserInterfaceItemIdentifier(id)
+            delete.bezelStyle = .recessed; delete.toolTip = "Yazıyı Çöp Sepeti’ne taşı"
+            delete.widthAnchor.constraint(equalToConstant: 28).isActive = true
+            let titleRow = NSStackView(views: [button, delete]); titleRow.spacing = 4
+            button.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+            let dates = noteDates[id]!
+            let created = NSTextField(labelWithString: "Eklendi: " + dateFormatter.string(from: dates.createdAt))
+            let updated = NSTextField(labelWithString: "Güncellendi: " + dateFormatter.string(from: dates.updatedAt))
+            for label in [created, updated] { label.font = .systemFont(ofSize: 11); label.textColor = .secondaryLabelColor }
+            let row = NSStackView(views: [titleRow, created, updated])
+            row.orientation = .vertical; row.alignment = .width; row.spacing = 4
+            row.edgeInsets = NSEdgeInsets(top: 6, left: 4, bottom: 10, right: 4)
+            noteList.addArrangedSubview(row)
         }
     }
     func setupSidebar() {
         sidebar.material = .sidebar; sidebar.blendingMode = .withinWindow; sidebar.state = .active
         sidebar.isHidden = true; sidebar.translatesAutoresizingMaskIntoConstraints = false
         background.addSubview(sidebar)
-        NSLayoutConstraint.activate([sidebar.leadingAnchor.constraint(equalTo: background.leadingAnchor), sidebar.topAnchor.constraint(equalTo: background.topAnchor), sidebar.bottomAnchor.constraint(equalTo: background.bottomAnchor), sidebar.widthAnchor.constraint(equalToConstant: 280)])
+        NSLayoutConstraint.activate([sidebar.leadingAnchor.constraint(equalTo: background.leadingAnchor), sidebar.topAnchor.constraint(equalTo: background.topAnchor), sidebar.bottomAnchor.constraint(equalTo: background.bottomAnchor), sidebar.widthAnchor.constraint(equalToConstant: sidebarWidth)])
         let header = NSTextField(labelWithString: "Yazılarım"); header.font = .systemFont(ofSize: 22, weight: .semibold)
         let newButton = NSButton(title: "+  Yeni yazı", target: self, action: #selector(newNote))
+        sortPicker.addItems(withTitles: NoteSort.allCases.map(\.title))
+        for (index, order) in NoteSort.allCases.enumerated() { sortPicker.item(at: index)?.tag = order.rawValue }
+        sortPicker.selectItem(withTag: sortOrder.rawValue)
+        sortPicker.target = self; sortPicker.action = #selector(changeSort)
+        sortPicker.setAccessibilityLabel("Notları sırala")
         let appearance = NSButton(title: "Görünüm ve arka plan…", target: self, action: #selector(showSettings))
         let hide = NSButton(title: "Menüyü gizle  ‹", target: self, action: #selector(hideSidebar))
         let listScroll = NSScrollView(); listScroll.drawsBackground = false; listScroll.hasVerticalScroller = true; listScroll.autohidesScrollers = true
         noteList.orientation = .vertical; noteList.alignment = .width; noteList.spacing = 6
         noteList.translatesAutoresizingMaskIntoConstraints = false; listScroll.documentView = noteList
         NSLayoutConstraint.activate([noteList.widthAnchor.constraint(equalTo: listScroll.contentView.widthAnchor)])
-        let stack = NSStackView(views: [header, newButton, listScroll, appearance, hide]); stack.orientation = .vertical; stack.alignment = .width; stack.spacing = 18
+        let stack = NSStackView(views: [header, newButton, sortPicker, listScroll, appearance, hide]); stack.orientation = .vertical; stack.alignment = .width; stack.spacing = 18
         stack.translatesAutoresizingMaskIntoConstraints = false; sidebar.addSubview(stack)
         NSLayoutConstraint.activate([stack.leadingAnchor.constraint(equalTo: sidebar.leadingAnchor, constant: 20), stack.trailingAnchor.constraint(equalTo: sidebar.trailingAnchor, constant: -20), stack.topAnchor.constraint(equalTo: sidebar.topAnchor, constant: 55), stack.bottomAnchor.constraint(equalTo: sidebar.bottomAnchor, constant: -30)])
         window.acceptsMouseMovedEvents = true
@@ -221,8 +340,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextViewDelegate, NS
             let point = self.background.convert(event.locationInWindow, from: nil)
             if event.type == .mouseMoved {
                 if point.x <= 14 { self.sidebar.isHidden = false }
-                else if point.x > 300 { self.hideSidebar() }
-            } else if point.x > 280 { self.hideSidebar() }
+                else if point.x > self.sidebarWidth + 20 { self.hideSidebar() }
+            } else if point.x > self.sidebarWidth { self.hideSidebar() }
             return event
         }
     }
@@ -482,13 +601,21 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextViewDelegate, NS
     }
     func textDidChange(_ notification: Notification) {
         guard !loadingNote else { return }
+        currentNoteDirty = true
         if saveCurrentNote() { rebuildNotes() }
     }
     @discardableResult
     func saveCurrentNote() -> Bool {
-        guard !currentNoteID.isEmpty else { return true }
+        guard !currentNoteID.isEmpty, currentNoteDirty else { return true }
         guard let data = editor.rtf(from: NSRange(location: 0, length: editor.string.utf16.count)) else { return false }
-        do { try data.write(to: noteURL(currentNoteID), options: .atomic); return true }
+        do {
+            try data.write(to: noteURL(currentNoteID), options: .atomic)
+            ensureDates(currentNoteID)
+            noteDates[currentNoteID]?.updatedAt = Date()
+            try persistDates()
+            currentNoteDirty = false
+            return true
+        }
         catch { showError(error); return false }
     }
     func saveDraft() { _ = saveCurrentNote() }

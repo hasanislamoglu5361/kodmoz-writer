@@ -44,6 +44,8 @@ Gereksinimler: **macOS 14 veya üzeri**. Hazır paket Apple Silicon (M serisi) M
 - **Tam ekran yazma:** Açılışta ekranın tamamını kaplar. Başlık ve araç çubuğu yazma alanında görünmez.
 - **Üstten başlayan metin:** Yazı sütunu yatayda ortalanır. İlk satır üstten 48 punto boşlukla başlar. Sol iç boşluk ve satır kenar payı harflerin kırpılmasını önler.
 - **Gizli not menüsü:** Fareyi ekranın sol kenarına getirin veya `⇧⌘L` kullanın. Not seçin, yeni bir yazı açın ya da arka plan ayarlarına gidin. Fareyi yazı alanına taşıyınca menü gizlenir.
+- **Tarihler ve sıralama:** Her notun eklenme ve son güncellenme tarihi, saat ve saniyesiyle listede görünür. Güncelleme tarihi, eklenme tarihi veya başlığa göre artan/azalan sıralama seçilebilir; tercih yeniden açılışta korunur. Notu yalnızca açmak tarihini değiştirmez. Eski notların tarihleri mevcut dosya bilgilerinden alınır.
+- **Not silme:** Her notun yanındaki çöp simgesi, onaydan sonra notu sistemin Çöp Sepeti’ne taşır. Son not silindiğinde boş bir not açılır.
 - **Birden fazla not:** `⌘N` ile yeni not oluşturun. Not başlıkları ilk dolu satırdan otomatik alınır.
 - **Anında otomatik kayıt:** Her metin değişikliği ve seçili metne uygulanan biçimlendirme, atomik dosya yazımıyla kaydedilir. Not değiştirirken ve uygulamadan çıkarken de kayıt yapılır. Kayıt başarısız olursa uygulama hata gösterir.
 - **10 hazır renk:** Gece, Kâğıt, Orman, Okyanus, Lavanta, Kum, Gül, Kömür, Adaçayı, Beyaz.
@@ -76,7 +78,7 @@ Gereksinimler: **macOS 14 veya üzeri**. Hazır paket Apple Silicon (M serisi) M
 
 Notlar `~/Library/Application Support/FocusWriter/Notes/` altında ayrı `.rtf` dosyaları olarak saklanır. Eski sürümlerdeki `Draft.rtf`, ilk açılışta bir nota kopyalanır ve özgün dosya korunur. Uygulamanın adı değişse de mevcut notlara ve tercihlere erişebilmek için veri klasörü ve bundle kimliği korunmuştur.
 
-Özel görsel aynı ana klasöre `Background.image` olarak kopyalanır; özgün dosyayı taşımanız arka planı bozmaz. Son açık not ve arka plan tercihi yeniden açılışta yüklenir. Yedekleme için bu klasörü kopyalayabilirsiniz. Not silme ve bulut eşitleme bu sürümde bulunmaz.
+Özel görsel aynı ana klasöre `Background.image` olarak kopyalanır; özgün dosyayı taşımanız arka planı bozmaz. Son açık not ve arka plan tercihi yeniden açılışta yüklenir. Yedekleme için bu klasörü kopyalayabilirsiniz. Silinen not dosyaları sistemin Çöp Sepeti’ne taşınır. Geri almak için Finder’dan dosyayı eski `Notes` klasörüne geri taşıyıp uygulamayı yeniden açın. Tarih bilgileri `NoteDates.json` dosyasında korunur; yedeklerken bu dosyayı da dahil edin. Bulut eşitleme bulunmaz.
 
 ## Kaynaktan derleme
 
@@ -103,6 +105,10 @@ Derleme çıktısı `dist/Kodmoz Writer.app` konumuna yazılır. Script, simgeyi
 | `RELEASE_NOTES.md` | Sürüm değişiklikleri |
 | `docs/screenshots/` | README’deki gerçek uygulama ekran görüntüleri |
 | `publish-screenshots.sh` | README ve ekran görüntülerini GitHub CLI ile güncelleme |
+
+## 1.2 sürümü
+
+Not silme, eklenme/güncellenme tarihleri ve altı sıralama seçeneği eklendi. Oluşturulma tarihi kalıcı olarak saklanır; son güncellenme tarihi yalnızca içerik veya biçim değişince ilerler.
 
 ## 1.1 sürümü
 
