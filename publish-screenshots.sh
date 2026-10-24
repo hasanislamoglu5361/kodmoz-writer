@@ -1,5 +1,5 @@
 #!/bin/bash
-# Update README and its three screenshot assets using the authenticated GitHub CLI.
+# Update README and its screenshot assets using the authenticated GitHub CLI.
 set -euo pipefail
 cd "$(dirname "$0")"
 repo="hasanislamoglu5361/kodmoz-writer"
@@ -11,7 +11,7 @@ if [[ -z "$branch" ]]; then
 fi
 upload_dir=$(mktemp -d "${TMPDIR:-/tmp}/kodmoz-screenshots.XXXXXX")
 trap 'rm -rf "$upload_dir"' EXIT
-for path in docs/screenshots/writing.jpg docs/screenshots/appearance.jpg docs/screenshots/links.jpg README.md; do
+for path in docs/screenshots/writing.jpg docs/screenshots/sidebar.jpg docs/screenshots/appearance.jpg docs/screenshots/links.jpg README.md; do
     # A missing file is allowed; other API failures must stop the update.
     status=0
     gh api "repos/$repo/contents/$path?ref=$branch" > "$upload_dir/current.json" 2> "$upload_dir/error.txt" || status=$?
@@ -22,7 +22,7 @@ for path in docs/screenshots/writing.jpg docs/screenshots/appearance.jpg docs/sc
     python3 - "$path" "$branch" "$upload_dir/current.json" "$upload_dir/request.json" <<'PY'
 import base64, json, pathlib, sys
 path, branch, current, output = sys.argv[1:]
-body = {'message': 'docs: add Kodmoz Writer application screenshots', 'branch': branch,
+body = {'message': 'docs: refresh screenshots from the 1.3 build', 'branch': branch,
         'content': base64.b64encode(pathlib.Path(path).read_bytes()).decode()}
 try:
     metadata = json.loads(pathlib.Path(current).read_text())
