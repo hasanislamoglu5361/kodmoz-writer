@@ -6,6 +6,28 @@
 
 Swift ve AppKit ile geliştirilmiş, dikkatinizi dağıtmadan yazı yazmanızı sağlayan yerel macOS uygulaması. Ekranı kaplayan bir arka plan, ortalanmış bir yazı sütunu ve ihtiyaç duyduğunuzda açılan bir not menüsü sunar. Yazı, ekranın üst bölümünden başlar.
 
+## Ekran görüntüleri
+
+Aşağıdaki görüntüler uygulamadan alınmıştır. Gösterilen metin, tanıtım için hazırlanmış örnek bir nottur.
+
+### Dikkat dağıtmayan tam ekran yazma
+
+Gün batımı arka planı, üstten başlayan ortalanmış yazı sütunu ve zengin metin biçimlendirmesi.
+
+<img src="docs/screenshots/writing.jpg" alt="Kodmoz Writer tam ekran yazı alanı ve gün batımı arka planı" width="900" />
+
+### Renkler ve manzaralar
+
+On hazır renk, on hazır manzara ve kişisel renk/görsel seçimi.
+
+<img src="docs/screenshots/appearance.jpg" alt="Kodmoz Writer görünüm penceresi: hazır renkler ve manzara arka planları" width="760" />
+
+### Bağlantı ekleme
+
+`⌘L` ile bağlantı metnini ve adresini girin. Bağlantılar notla birlikte otomatik kaydedilir.
+
+<img src="docs/screenshots/links.jpg" alt="Kodmoz Writer bağlantı ekleme penceresi: metin ve adres alanları" width="640" />
+
 ## İndir ve kur
 
 **[En son sürümü indir](https://github.com/hasanislamoglu5361/kodmoz-writer/releases/latest)** · **[Tüm sürümler](https://github.com/hasanislamoglu5361/kodmoz-writer/releases)**
@@ -79,6 +101,8 @@ Derleme çıktısı `dist/Kodmoz Writer.app` konumuna yazılır. Script, simgeyi
 | `AppIcon.png` | Kodmoz Writer logosu |
 | `AppIcon.icns` | macOS uygulama simgesi |
 | `RELEASE_NOTES.md` | Sürüm değişiklikleri |
+| `docs/screenshots/` | README’deki gerçek uygulama ekran görüntüleri |
+| `publish-screenshots.sh` | README ve ekran görüntülerini GitHub CLI ile güncelleme |
 
 ## 1.1 sürümü
 
@@ -93,3 +117,11 @@ bash publish.sh
 ```
 
 Script önce GitHub bağlantısını doğrular, uygulamayı derler, yalnızca kaynak dosyaları ve simgeyi ayrı bir Git çalışma alanına alır, `main` dalına ve `v1.1.0` etiketine gönderir. Ardından ZIP dosyasını GitHub Release’e yükler. Kişisel notlar, özel arka planlar, derleme önbelleği ve çalışma klasörünün diğer dosyaları kaynak depoya eklenmez. Uzak dal ile geçmiş uyuşmazsa script durur; force push yapmaz. Release bağlantısı yayın tamamlandıktan sonra çalışır.
+
+README ve ekran görüntülerini mevcut depoda güncellemek için:
+
+```sh
+bash publish-screenshots.sh
+```
+
+Bu komut yalnızca README’yi ve üç ekran görüntüsünü günceller; yeni uygulama sürümü yayımlamaz.
