@@ -1,4 +1,13 @@
-# Kodmoz Writer 1.2
+# Kodmoz Writer 1.3
+
+- Yeni yazı butonu gradyanlı, artı işaretli ve basılı durumlu hale getirildi.
+- Yan menü, ayarlar ve bağlantı pencerelerindeki hizalama bozuklukları giderildi.
+- Bağlantı penceresi açılırken boş adres hatasının görünmesi düzeltildi.
+- Manzara küçük resimlerinde adlar artık görselin altında.
+- Ayarlar paneli yeniden düzenlendi; renkler ve manzaralar iki sütunda, seçim vurgusuyla.
+- Not listesi üstten başlıyor ve kartlar tam genişlikte.
+
+## 1.2'den özellikler
 
 - Her notta eklenme ve son güncellenme tarihi.
 - Tarih ve başlığa göre altı sıralama seçeneği; tercih korunur.

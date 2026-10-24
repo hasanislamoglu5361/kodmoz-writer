@@ -24,18 +24,48 @@ struct Palette {
     let color: NSColor
 }
 let palettes: [Palette] = [
-    .init(name: "Gece", color: NSColor(srgbRed: 0.07, green: 0.09, blue: 0.13, alpha: 1)),
-    .init(name: "Kâğıt", color: NSColor(srgbRed: 0.96, green: 0.94, blue: 0.88, alpha: 1)),
-    .init(name: "Orman", color: NSColor(srgbRed: 0.10, green: 0.20, blue: 0.17, alpha: 1)),
-    .init(name: "Okyanus", color: NSColor(srgbRed: 0.09, green: 0.19, blue: 0.29, alpha: 1)),
-    .init(name: "Lavanta", color: NSColor(srgbRed: 0.84, green: 0.81, blue: 0.91, alpha: 1)),
-    .init(name: "Kum", color: NSColor(srgbRed: 0.86, green: 0.77, blue: 0.63, alpha: 1)),
-    .init(name: "Gül", color: NSColor(srgbRed: 0.93, green: 0.82, blue: 0.81, alpha: 1)),
-    .init(name: "Kömür", color: NSColor(srgbRed: 0.16, green: 0.16, blue: 0.17, alpha: 1)),
-    .init(name: "Adaçayı", color: NSColor(srgbRed: 0.75, green: 0.82, blue: 0.73, alpha: 1)),
-    .init(name: "Beyaz", color: .white)
+    .init(name: "Gece", color: NSColor(srgbRed: 0.052, green: 0.062, blue: 0.086, alpha: 1)),
+    .init(name: "Kâğıt", color: NSColor(srgbRed: 0.965, green: 0.945, blue: 0.895, alpha: 1)),
+    .init(name: "Orman", color: NSColor(srgbRed: 0.078, green: 0.176, blue: 0.149, alpha: 1)),
+    .init(name: "Okyanus", color: NSColor(srgbRed: 0.070, green: 0.164, blue: 0.262, alpha: 1)),
+    .init(name: "Lavanta", color: NSColor(srgbRed: 0.842, green: 0.812, blue: 0.918, alpha: 1)),
+    .init(name: "Kum", color: NSColor(srgbRed: 0.868, green: 0.774, blue: 0.628, alpha: 1)),
+    .init(name: "Gül", color: NSColor(srgbRed: 0.938, green: 0.822, blue: 0.812, alpha: 1)),
+    .init(name: "Kömür", color: NSColor(srgbRed: 0.148, green: 0.148, blue: 0.156, alpha: 1)),
+    .init(name: "Adaçayı", color: NSColor(srgbRed: 0.752, green: 0.822, blue: 0.730, alpha: 1)),
+    .init(name: "Beyaz", color: NSColor(srgbRed: 0.988, green: 0.984, blue: 0.975, alpha: 1))
 ]
 let sceneNames = ["Sisli Dağlar", "Gün Batımı", "Çam Ormanı", "Kum Tepeleri", "Gece Göğü", "Sakin Deniz", "Lavanta Tepeleri", "Karlı Zirveler", "Sonbahar", "Ay Işığı"]
+
+enum Theme {
+    static let accent = NSColor(srgbRed: 0.796, green: 0.678, blue: 0.470, alpha: 1)
+    static let sidebarWidth: CGFloat = 332
+    static let columnWidth: CGFloat = 720
+    static let writingSize: CGFloat = 21
+
+    static func writingFont(_ size: CGFloat = writingSize, italic: Bool = false) -> NSFont {
+        let base = NSFont.systemFont(ofSize: size, weight: .regular)
+        if let descriptor = base.fontDescriptor.withDesign(.serif), let font = NSFont(descriptor: descriptor, size: size) {
+            return italic ? NSFontManager.shared.convert(font, toHaveTrait: .italicFontMask) : font
+        }
+        return italic ? NSFontManager.shared.convert(base, toHaveTrait: .italicFontMask) : base
+    }
+
+    static func sans(_ size: CGFloat, _ weight: NSFont.Weight = .regular) -> NSFont {
+        .systemFont(ofSize: size, weight: weight)
+    }
+
+    static func tracking(_ size: CGFloat) -> [NSAttributedString.Key: Any] {
+        [.font: sans(size, .semibold), .kern: 1.4, .foregroundColor: NSColor.white.withAlphaComponent(0.55)]
+    }
+
+    static func relativeDate(_ date: Date) -> String {
+        let formatter = RelativeDateTimeFormatter()
+        formatter.locale = Locale(identifier: "tr_TR")
+        formatter.unitsStyle = .short
+        return formatter.localizedString(for: date, relativeTo: Date())
+    }
+}
 
 @MainActor
 final class FocusWindow: NSWindow {
@@ -53,6 +83,638 @@ final class WritingClipView: NSClipView {
 }
 
 @MainActor
+final class FlippedStackView: NSStackView {
+    override var isFlipped: Bool { true }
+}
+
+final class SidebarPanel: NSVisualEffectView {
+    override func draw(_ dirtyRect: NSRect) {
+        super.draw(dirtyRect)
+        NSColor.black.withAlphaComponent(0.34).setFill(); bounds.fill()
+        NSColor.white.withAlphaComponent(0.07).setFill()
+        NSRect(x: bounds.maxX - 1, y: 0, width: 1, height: bounds.height).fill()
+    }
+}
+
+@MainActor
+final class FilledButton: NSButton {
+    private let label: String
+    private let showsPlus: Bool
+    private var isHovered = false { didSet { needsDisplay = true } }
+    private var isPressed = false { didSet { needsDisplay = true } }
+
+    init(title: String, plus: Bool = false, action: Selector, target: AnyObject) {
+        label = title
+        showsPlus = plus
+        super.init(frame: .zero)
+        self.target = target
+        self.action = action
+        isBordered = false
+        focusRingType = .none
+        wantsLayer = true
+        setAccessibilityLabel(title)
+        setButtonType(.momentaryChange)
+        translatesAutoresizingMaskIntoConstraints = false
+        heightAnchor.constraint(equalToConstant: 36).isActive = true
+    }
+    required init?(coder: NSCoder) { fatalError() }
+
+    override func updateTrackingAreas() {
+        super.updateTrackingAreas()
+        for area in trackingAreas { removeTrackingArea(area) }
+        addTrackingArea(NSTrackingArea(rect: bounds, options: [.mouseEnteredAndExited, .activeInKeyWindow, .inVisibleRect], owner: self))
+    }
+    override func mouseEntered(with event: NSEvent) { isHovered = true }
+    override func mouseExited(with event: NSEvent) { isHovered = false }
+    override func mouseDown(with event: NSEvent) {
+        isPressed = true
+        super.mouseDown(with: event)
+        isPressed = false
+    }
+
+    private var ink: NSColor { NSColor(srgbRed: 0.098, green: 0.086, blue: 0.063, alpha: 1) }
+
+    override func draw(_ dirtyRect: NSRect) {
+        let rect = bounds.insetBy(dx: 0.5, dy: 0.5)
+        let shape = NSBezierPath(roundedRect: rect, xRadius: 11, yRadius: 11)
+        let lift: CGFloat = isPressed ? 0 : 1
+
+        NSGraphicsContext.saveGraphicsState()
+        let shadow = NSShadow()
+        shadow.shadowColor = NSColor.black.withAlphaComponent(isPressed ? 0.20 : 0.34)
+        shadow.shadowBlurRadius = isPressed ? 4 : 12
+        shadow.shadowOffset = NSSize(width: 0, height: -lift * 2)
+        shadow.set()
+        Theme.accent.setFill()
+        shape.fill()
+        NSGraphicsContext.restoreGraphicsState()
+
+        let highlight = Theme.accent.blended(withFraction: isHovered ? 0.24 : 0.13, of: .white) ?? Theme.accent
+        let shade = Theme.accent.blended(withFraction: isPressed ? 0.10 : 0.0, of: .black) ?? Theme.accent
+        NSGradient(starting: shade, ending: highlight)?.draw(in: shape, angle: 90)
+
+        NSGraphicsContext.saveGraphicsState()
+        shape.addClip()
+        NSColor.white.withAlphaComponent(isHovered ? 0.22 : 0.14).setStroke()
+        let sheen = NSBezierPath(roundedRect: rect.insetBy(dx: 0.75, dy: 0.75), xRadius: 10, yRadius: 10)
+        sheen.lineWidth = 1
+        sheen.stroke()
+        NSGraphicsContext.restoreGraphicsState()
+
+        let font = NSFont.systemFont(ofSize: 12.5, weight: .semibold)
+        let textSize = (label as NSString).size(withAttributes: [.font: font])
+        let plusSize: CGFloat = showsPlus ? 13 : 0
+        let gap: CGFloat = showsPlus ? 8 : 0
+        let total = textSize.width + plusSize + gap
+        let startX = (bounds.width - total) / 2
+        let baselineShift = isPressed ? -0.5 : 0
+
+        if showsPlus {
+            ink.setStroke()
+            let center = NSPoint(x: startX + plusSize / 2, y: bounds.midY + baselineShift)
+            let stroke = NSBezierPath()
+            stroke.lineWidth = 1.8
+            stroke.lineCapStyle = .round
+            stroke.move(to: NSPoint(x: center.x - 4.5, y: center.y))
+            stroke.line(to: NSPoint(x: center.x + 4.5, y: center.y))
+            stroke.move(to: NSPoint(x: center.x, y: center.y - 4.5))
+            stroke.line(to: NSPoint(x: center.x, y: center.y + 4.5))
+            stroke.stroke()
+        }
+
+        NSAttributedString(string: label, attributes: [.font: font, .foregroundColor: ink])
+            .draw(at: NSPoint(x: startX + plusSize + gap, y: bounds.midY - textSize.height / 2 + 0.5 + baselineShift))
+    }
+}
+
+@MainActor
+final class NoteRow: NSView {
+    var noteID: String
+    var isSelectedNote: Bool { didSet { needsDisplay = true; refreshDelete() } }
+    private var isHovered = false { didSet { needsDisplay = true; refreshDelete() } }
+    var onSelect: ((String) -> Void)?
+    var onDelete: ((String) -> Void)?
+    private let deleteButton = NSButton()
+    private var tracking: NSTrackingArea?
+
+    init(id: String, title: String, subtitle: String, selected: Bool) {
+        noteID = id; isSelectedNote = selected
+        super.init(frame: .zero)
+        wantsLayer = true
+        translatesAutoresizingMaskIntoConstraints = false
+
+        let titleLabel = NSTextField(labelWithString: title)
+        titleLabel.font = .systemFont(ofSize: 13.5, weight: selected ? .semibold : .medium)
+        titleLabel.textColor = NSColor.white.withAlphaComponent(selected ? 0.97 : 0.82)
+        titleLabel.lineBreakMode = .byTruncatingTail
+        titleLabel.translatesAutoresizingMaskIntoConstraints = false
+
+        let dateLabel = NSTextField(labelWithString: subtitle)
+        dateLabel.font = .systemFont(ofSize: 11, weight: .regular)
+        dateLabel.textColor = NSColor.white.withAlphaComponent(selected ? 0.52 : 0.38)
+        dateLabel.lineBreakMode = .byTruncatingTail
+        dateLabel.translatesAutoresizingMaskIntoConstraints = false
+
+        deleteButton.image = NSImage(systemSymbolName: "trash", accessibilityDescription: "Yazıyı sil")
+        deleteButton.isBordered = false
+        deleteButton.contentTintColor = NSColor.white.withAlphaComponent(0.45)
+        deleteButton.target = self; deleteButton.action = #selector(deleteTapped)
+        deleteButton.translatesAutoresizingMaskIntoConstraints = false
+        deleteButton.toolTip = "Yazıyı Çöp Sepeti’ne taşı"
+        deleteButton.alphaValue = 0
+
+        addSubview(titleLabel); addSubview(dateLabel); addSubview(deleteButton)
+        NSLayoutConstraint.activate([
+            heightAnchor.constraint(equalToConstant: 58),
+            titleLabel.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 14),
+            titleLabel.topAnchor.constraint(equalTo: topAnchor, constant: 12),
+            titleLabel.trailingAnchor.constraint(lessThanOrEqualTo: deleteButton.leadingAnchor, constant: -6),
+            dateLabel.leadingAnchor.constraint(equalTo: titleLabel.leadingAnchor),
+            dateLabel.topAnchor.constraint(equalTo: titleLabel.bottomAnchor, constant: 3),
+            dateLabel.trailingAnchor.constraint(lessThanOrEqualTo: trailingAnchor, constant: -12),
+            deleteButton.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -8),
+            deleteButton.centerYAnchor.constraint(equalTo: centerYAnchor),
+            deleteButton.widthAnchor.constraint(equalToConstant: 24),
+            deleteButton.heightAnchor.constraint(equalToConstant: 24)
+        ])
+    }
+    required init?(coder: NSCoder) { fatalError() }
+
+    private func refreshDelete() { deleteButton.alphaValue = (isHovered || isSelectedNote) ? 1 : 0 }
+
+    override func updateTrackingAreas() {
+        super.updateTrackingAreas()
+        if let tracking { removeTrackingArea(tracking) }
+        let area = NSTrackingArea(rect: bounds, options: [.mouseEnteredAndExited, .activeInKeyWindow, .inVisibleRect], owner: self)
+        addTrackingArea(area); tracking = area
+    }
+    override func mouseEntered(with event: NSEvent) { isHovered = true }
+    override func mouseExited(with event: NSEvent) { isHovered = false }
+    override func mouseDown(with event: NSEvent) { onSelect?(noteID) }
+    @objc private func deleteTapped() { onDelete?(noteID) }
+
+    override func draw(_ dirtyRect: NSRect) {
+        let card = NSBezierPath(roundedRect: bounds.insetBy(dx: 0, dy: 2), xRadius: 11, yRadius: 11)
+        if isSelectedNote {
+            NSColor.white.withAlphaComponent(0.09).setFill(); card.fill()
+            Theme.accent.withAlphaComponent(0.92).setFill()
+            NSBezierPath(roundedRect: NSRect(x: 0, y: bounds.midY - 12, width: 2.5, height: 24), xRadius: 1.25, yRadius: 1.25).fill()
+        } else if isHovered {
+            NSColor.white.withAlphaComponent(0.05).setFill(); card.fill()
+        }
+    }
+}
+
+@MainActor
+final class FooterButton: NSButton {
+    private var hoverArea: NSTrackingArea?
+    init(title: String, symbol: String, action: Selector, target: AnyObject) {
+        super.init(frame: .zero)
+        self.title = title
+        self.target = target
+        self.action = action
+        isBordered = false
+        wantsLayer = true
+        focusRingType = .none
+        layer?.cornerRadius = 8
+        let image = NSImage(systemSymbolName: symbol, accessibilityDescription: nil)
+        image?.isTemplate = true
+        self.image = image
+        imagePosition = .imageLeading
+        contentTintColor = NSColor.white.withAlphaComponent(0.62)
+        attributedTitle = NSAttributedString(string: title, attributes: [
+            .font: NSFont.systemFont(ofSize: 11.5, weight: .medium),
+            .foregroundColor: NSColor.white.withAlphaComponent(0.62)
+        ])
+        heightAnchor.constraint(equalToConstant: 28).isActive = true
+    }
+    required init?(coder: NSCoder) { fatalError() }
+    override func updateTrackingAreas() {
+        super.updateTrackingAreas()
+        if let hoverArea { removeTrackingArea(hoverArea) }
+        let area = NSTrackingArea(rect: bounds, options: [.mouseEnteredAndExited, .activeInKeyWindow, .inVisibleRect], owner: self)
+        addTrackingArea(area); hoverArea = area
+    }
+    override func mouseEntered(with event: NSEvent) {
+        layer?.backgroundColor = NSColor.white.withAlphaComponent(0.07).cgColor
+        contentTintColor = NSColor.white.withAlphaComponent(0.92)
+    }
+    override func mouseExited(with event: NSEvent) {
+        layer?.backgroundColor = NSColor.clear.cgColor
+        contentTintColor = NSColor.white.withAlphaComponent(0.62)
+    }
+}
+
+@MainActor
+final class HUDView: NSView {
+    private let wordLabel = NSTextField(labelWithString: "0 kelime")
+    private let saveLabel = NSTextField(labelWithString: "Kaydedildi")
+    private let dot = NSView()
+    private var tracking: NSTrackingArea?
+
+    override init(frame frameRect: NSRect) {
+        super.init(frame: frameRect)
+        wantsLayer = true
+        layer?.cornerRadius = 15
+        layer?.backgroundColor = NSColor.black.withAlphaComponent(0.28).cgColor
+        layer?.borderWidth = 1
+        layer?.borderColor = NSColor.white.withAlphaComponent(0.10).cgColor
+
+        wordLabel.font = .monospacedDigitSystemFont(ofSize: 10.5, weight: .medium)
+        wordLabel.textColor = NSColor.white.withAlphaComponent(0.52)
+        saveLabel.font = .systemFont(ofSize: 10.5, weight: .medium)
+        saveLabel.textColor = NSColor.white.withAlphaComponent(0.40)
+        dot.wantsLayer = true
+        dot.layer?.cornerRadius = 2.5
+        dot.layer?.backgroundColor = Theme.accent.withAlphaComponent(0.85).cgColor
+        [wordLabel, saveLabel, dot].forEach { $0.translatesAutoresizingMaskIntoConstraints = false; addSubview($0) }
+        NSLayoutConstraint.activate([
+            heightAnchor.constraint(equalToConstant: 30),
+            dot.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 13),
+            dot.centerYAnchor.constraint(equalTo: centerYAnchor),
+            dot.widthAnchor.constraint(equalToConstant: 5),
+            dot.heightAnchor.constraint(equalToConstant: 5),
+            wordLabel.leadingAnchor.constraint(equalTo: dot.trailingAnchor, constant: 8),
+            wordLabel.centerYAnchor.constraint(equalTo: centerYAnchor),
+            saveLabel.leadingAnchor.constraint(equalTo: wordLabel.trailingAnchor, constant: 10),
+            saveLabel.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -13),
+            saveLabel.centerYAnchor.constraint(equalTo: centerYAnchor)
+        ])
+    }
+    required init?(coder: NSCoder) { fatalError() }
+
+    func update(words: Int, saved: Bool) {
+        wordLabel.stringValue = words == 1 ? "1 kelime" : "\(words) kelime"
+        saveLabel.stringValue = saved ? "Kaydedildi" : "Yazıyor…"
+        dot.layer?.backgroundColor = (saved ? Theme.accent : NSColor.white).withAlphaComponent(0.85).cgColor
+    }
+}
+
+@MainActor
+final class GhostButton: NSButton {
+    private var hoverArea: NSTrackingArea?
+    private let baseColor: NSColor
+
+    init(title: String, symbol: String? = nil, destructive: Bool = false, action: Selector, target: AnyObject) {
+        baseColor = destructive
+            ? NSColor(srgbRed: 0.95, green: 0.60, blue: 0.54, alpha: 1)
+            : NSColor.white.withAlphaComponent(0.62)
+        super.init(frame: .zero)
+        self.title = title
+        self.target = target
+        self.action = action
+        isBordered = false
+        wantsLayer = true
+        focusRingType = .none
+        layer?.cornerRadius = 11
+        attributedTitle = NSAttributedString(string: title, attributes: [
+            .font: NSFont.systemFont(ofSize: 12.5, weight: .medium),
+            .foregroundColor: baseColor
+        ])
+        if let symbol {
+            let image = NSImage(systemSymbolName: symbol, accessibilityDescription: nil)?
+                .withSymbolConfiguration(NSImage.SymbolConfiguration(pointSize: 11.5, weight: .medium))
+            image?.isTemplate = true
+            self.image = image
+            imagePosition = .imageLeading
+            imageHugsTitle = true
+            contentTintColor = baseColor
+        }
+        heightAnchor.constraint(equalToConstant: 34).isActive = true
+    }
+    required init?(coder: NSCoder) { fatalError() }
+    override func updateTrackingAreas() {
+        super.updateTrackingAreas()
+        if let hoverArea { removeTrackingArea(hoverArea) }
+        let area = NSTrackingArea(rect: bounds, options: [.mouseEnteredAndExited, .activeInKeyWindow, .inVisibleRect], owner: self)
+        addTrackingArea(area); hoverArea = area
+    }
+    override func mouseEntered(with event: NSEvent) {
+        layer?.backgroundColor = NSColor.white.withAlphaComponent(0.07).cgColor
+        contentTintColor = NSColor.white.withAlphaComponent(0.92)
+    }
+    override func mouseExited(with event: NSEvent) {
+        layer?.backgroundColor = NSColor.clear.cgColor
+        contentTintColor = baseColor
+    }
+}
+
+@MainActor
+final class CardBackground: NSVisualEffectView {
+    override func draw(_ dirtyRect: NSRect) {
+        super.draw(dirtyRect)
+        let radius = max(bounds.width, bounds.height) * 0.85
+        NSGradient(colors: [Theme.accent.withAlphaComponent(0.13), Theme.accent.withAlphaComponent(0)])?
+            .draw(in: NSBezierPath(ovalIn: NSRect(x: -radius * 0.30, y: bounds.height - radius * 0.58, width: radius, height: radius)), relativeCenterPosition: .zero)
+        NSColor.white.withAlphaComponent(0.10).setStroke()
+        let border = NSBezierPath(roundedRect: bounds.insetBy(dx: 0.5, dy: 0.5), xRadius: 16, yRadius: 16)
+        border.lineWidth = 1
+        border.stroke()
+    }
+}
+
+@MainActor
+final class SwatchButton: NSButton {
+    private let palette: Palette
+    var isActive = false { didSet { needsDisplay = true } }
+    private var isHovered = false { didSet { needsDisplay = true } }
+
+    init(palette: Palette, index: Int, target: AnyObject, action: Selector) {
+        self.palette = palette
+        super.init(frame: .zero)
+        tag = index
+        self.target = target
+        self.action = action
+        isBordered = false
+        focusRingType = .none
+        wantsLayer = true
+        setAccessibilityLabel(palette.name)
+        toolTip = palette.name
+        translatesAutoresizingMaskIntoConstraints = false
+        heightAnchor.constraint(equalToConstant: 42).isActive = true
+    }
+    required init?(coder: NSCoder) { fatalError() }
+
+    override func updateTrackingAreas() {
+        super.updateTrackingAreas()
+        for area in trackingAreas { removeTrackingArea(area) }
+        addTrackingArea(NSTrackingArea(rect: bounds, options: [.mouseEnteredAndExited, .activeInKeyWindow, .inVisibleRect], owner: self))
+    }
+    override func mouseEntered(with event: NSEvent) { isHovered = true }
+    override func mouseExited(with event: NSEvent) { isHovered = false }
+
+    override func draw(_ dirtyRect: NSRect) {
+        let card = NSBezierPath(roundedRect: bounds.insetBy(dx: 0, dy: 1), xRadius: 10, yRadius: 10)
+        if isActive {
+            NSColor.white.withAlphaComponent(0.09).setFill(); card.fill()
+            Theme.accent.withAlphaComponent(0.75).setStroke()
+            card.lineWidth = 1
+            card.stroke()
+        } else if isHovered {
+            NSColor.white.withAlphaComponent(0.05).setFill(); card.fill()
+        }
+        let swatch = NSRect(x: 11, y: bounds.midY - 8, width: 16, height: 16)
+        let dot = NSBezierPath(ovalIn: swatch)
+        palette.color.setFill(); dot.fill()
+        NSColor.white.withAlphaComponent(isActive ? 0.55 : 0.22).setStroke()
+        dot.lineWidth = 1
+        dot.stroke()
+        NSAttributedString(string: palette.name, attributes: [
+            .font: NSFont.systemFont(ofSize: 12, weight: isActive ? .semibold : .regular),
+            .foregroundColor: NSColor.white.withAlphaComponent(isActive ? 0.96 : 0.72)
+        ]).draw(in: NSRect(x: swatch.maxX + 9, y: bounds.midY - 8, width: bounds.width - swatch.maxX - 14, height: 16))
+    }
+}
+
+@MainActor
+final class SceneTile: NSButton {
+    private let sceneName: String
+    private let thumbnail: NSImage
+    var isActive = false { didSet { needsDisplay = true } }
+    private var isHovered = false { didSet { needsDisplay = true } }
+
+    init(index: Int, name: String, image: NSImage, target: AnyObject, action: Selector) {
+        sceneName = name; thumbnail = image
+        super.init(frame: .zero)
+        tag = index
+        self.target = target
+        self.action = action
+        isBordered = false
+        focusRingType = .none
+        wantsLayer = true
+        setAccessibilityLabel(name)
+        toolTip = name
+        translatesAutoresizingMaskIntoConstraints = false
+        heightAnchor.constraint(equalToConstant: 92).isActive = true
+    }
+    required init?(coder: NSCoder) { fatalError() }
+
+    override func updateTrackingAreas() {
+        super.updateTrackingAreas()
+        for area in trackingAreas { removeTrackingArea(area) }
+        addTrackingArea(NSTrackingArea(rect: bounds, options: [.mouseEnteredAndExited, .activeInKeyWindow, .inVisibleRect], owner: self))
+    }
+    override func mouseEntered(with event: NSEvent) { isHovered = true }
+    override func mouseExited(with event: NSEvent) { isHovered = false }
+
+    override func draw(_ dirtyRect: NSRect) {
+        let captionHeight: CGFloat = 18
+        let frame = NSRect(x: 1, y: 0, width: bounds.width - 2, height: bounds.height - captionHeight)
+        let shape = NSBezierPath(roundedRect: frame, xRadius: 9, yRadius: 9)
+        NSGraphicsContext.saveGraphicsState()
+        shape.addClip()
+        thumbnail.draw(in: frame, from: .zero, operation: .sourceOver, fraction: isHovered || isActive ? 1 : 0.72)
+        if isActive {
+            NSColor.black.withAlphaComponent(0.14).setFill(); frame.fill()
+        }
+        NSGraphicsContext.restoreGraphicsState()
+        (isActive ? Theme.accent.withAlphaComponent(0.9) : NSColor.white.withAlphaComponent(isHovered ? 0.30 : 0.12)).setStroke()
+        shape.lineWidth = isActive ? 2 : 1
+        shape.stroke()
+        let paragraph = NSMutableParagraphStyle()
+        paragraph.alignment = .center
+        paragraph.lineBreakMode = .byTruncatingTail
+        NSAttributedString(string: sceneName, attributes: [
+            .font: NSFont.systemFont(ofSize: 10.5, weight: isActive ? .semibold : .regular),
+            .foregroundColor: NSColor.white.withAlphaComponent(isActive ? 0.96 : 0.58),
+            .paragraphStyle: paragraph
+        ]).draw(in: NSRect(x: 0, y: bounds.height - captionHeight + 3, width: bounds.width, height: 15))
+    }
+    override var isFlipped: Bool { true }
+}
+
+@MainActor
+final class FieldBox: NSView, NSTextFieldDelegate {
+    let field: NSTextField
+
+    init(value: String, placeholder: String, accessibility: String) {
+        field = NSTextField(string: value)
+        super.init(frame: .zero)
+        wantsLayer = true
+        translatesAutoresizingMaskIntoConstraints = false
+        layer?.cornerRadius = 9
+        layer?.backgroundColor = NSColor.white.withAlphaComponent(0.06).cgColor
+        layer?.borderWidth = 1
+        layer?.borderColor = NSColor.white.withAlphaComponent(0.10).cgColor
+        field.isBezeled = false
+        field.drawsBackground = false
+        field.focusRingType = .none
+        field.font = .systemFont(ofSize: 13.5)
+        field.textColor = NSColor.white.withAlphaComponent(0.94)
+        field.placeholderString = placeholder
+        field.setAccessibilityLabel(accessibility)
+        field.delegate = self
+        field.translatesAutoresizingMaskIntoConstraints = false
+        addSubview(field)
+        NSLayoutConstraint.activate([
+            heightAnchor.constraint(equalToConstant: 38),
+            field.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 12),
+            field.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -12),
+            field.centerYAnchor.constraint(equalTo: centerYAnchor)
+        ])
+    }
+    required init?(coder: NSCoder) { fatalError() }
+
+    override func mouseDown(with event: NSEvent) { window?.makeFirstResponder(field) }
+    func controlTextDidBeginEditing(_ obj: Notification) {
+        layer?.borderColor = Theme.accent.withAlphaComponent(0.55).cgColor
+    }
+    func controlTextDidEndEditing(_ obj: Notification) {
+        layer?.borderColor = NSColor.white.withAlphaComponent(0.10).cgColor
+    }
+    func control(_ control: NSControl, textView: NSTextView, doCommandBy commandSelector: Selector) -> Bool {
+        guard commandSelector == #selector(NSResponder.insertNewline(_:)) else { return false }
+        onSubmit?()
+        return true
+    }
+    var onSubmit: (() -> Void)?
+}
+
+@MainActor
+final class LinkSheet: NSPanel {
+    var onSubmit: ((String, URL) -> Void)?
+    var onRemove: (() -> Void)?
+    var onDismiss: (() -> Void)?
+
+    private let textBox: FieldBox
+    private let addressBox: FieldBox
+    private let errorLabel = NSTextField(labelWithString: "")
+    private let hasExisting: Bool
+    private var addButton: FilledButton!
+
+    init(selectedText: String, existingURL: String?) {
+        let existing = (existingURL?.isEmpty == false) ? existingURL : nil
+        hasExisting = existing != nil
+        textBox = FieldBox(value: selectedText, placeholder: "Bağlantı metni", accessibility: "Bağlantı metni")
+        addressBox = FieldBox(value: existing ?? "", placeholder: "https://ornek.com", accessibility: "Bağlantı adresi")
+        super.init(contentRect: NSRect(x: 0, y: 0, width: 448, height: 380), styleMask: [.titled, .fullSizeContentView], backing: .buffered, defer: false)
+        titleVisibility = .hidden
+        titlebarAppearsTransparent = true
+        isMovableByWindowBackground = false
+        isOpaque = false
+        backgroundColor = .clear
+        hasShadow = true
+        appearance = NSAppearance(named: .darkAqua)
+        [.closeButton, .miniaturizeButton, .zoomButton].forEach { standardWindowButton($0)?.isHidden = true }
+        addButton = FilledButton(title: hasExisting ? "Kaydet" : "Ekle", action: #selector(submit), target: self)
+
+        let background = CardBackground()
+        background.material = .hudWindow
+        background.blendingMode = .behindWindow
+        background.state = .active
+        background.appearance = NSAppearance(named: .darkAqua)
+        background.wantsLayer = true
+        background.layer?.cornerRadius = 16
+        background.layer?.masksToBounds = true
+        contentView = background
+
+        func caption(_ text: String) -> NSTextField {
+            NSTextField(labelWithAttributedString: NSAttributedString(string: text, attributes: [
+                .font: NSFont.systemFont(ofSize: 9.5, weight: .semibold),
+                .kern: 1.2,
+                .foregroundColor: NSColor.white.withAlphaComponent(0.42)
+            ]))
+        }
+
+        let eyebrow = NSTextField(labelWithAttributedString: NSAttributedString(string: "BAĞLANTI", attributes: Theme.tracking(9)))
+        let heading = NSTextField(labelWithString: hasExisting ? "Bağlantıyı düzenle" : "Bağlantı ekle")
+        heading.font = Theme.writingFont(25)
+        heading.textColor = NSColor.white.withAlphaComponent(0.96)
+        let subtitle = NSTextField(wrappingLabelWithString: "Açmak için ⌘ tuşuyla tıkla. Adres yoksa https:// eklenir.")
+        subtitle.font = .systemFont(ofSize: 11.5)
+        subtitle.textColor = NSColor.white.withAlphaComponent(0.48)
+        subtitle.preferredMaxLayoutWidth = 392
+
+        errorLabel.font = .systemFont(ofSize: 11.5, weight: .medium)
+        errorLabel.textColor = NSColor(srgbRed: 0.95, green: 0.60, blue: 0.54, alpha: 1)
+        errorLabel.isHidden = true
+
+        textBox.onSubmit = { [weak self] in self?.focusAddress() }
+        addressBox.onSubmit = { [weak self] in self?.submit() }
+        textBox.field.nextKeyView = addressBox.field
+        addressBox.field.nextKeyView = textBox.field
+
+        addButton.widthAnchor.constraint(equalToConstant: 92).isActive = true
+        let cancel = GhostButton(title: "İptal", action: #selector(cancel), target: self)
+        cancel.widthAnchor.constraint(equalToConstant: 82).isActive = true
+        let buttons = NSStackView(views: [NSView(), cancel, addButton])
+        buttons.orientation = .horizontal
+        buttons.spacing = 8
+
+        let textCaption = caption("METİN")
+        let addressCaption = caption("ADRES")
+        var arranged: [NSView] = [eyebrow, heading, subtitle, textCaption, textBox, addressCaption, addressBox, errorLabel]
+        if hasExisting {
+            let remove = GhostButton(title: "Bağlantıyı kaldır", symbol: "link.badge.plus", destructive: true, action: #selector(removeLink), target: self)
+            let row = NSStackView(views: [remove, NSView()])
+            row.orientation = .horizontal
+            arranged.append(row)
+        }
+        arranged.append(buttons)
+
+        let stack = NSStackView(views: arranged)
+        stack.orientation = .vertical
+        stack.alignment = .leading
+        stack.spacing = 10
+        stack.setCustomSpacing(5, after: eyebrow)
+        stack.setCustomSpacing(6, after: heading)
+        stack.setCustomSpacing(18, after: subtitle)
+        stack.setCustomSpacing(6, after: textCaption)
+        stack.setCustomSpacing(13, after: textBox)
+        stack.setCustomSpacing(16, after: errorLabel)
+        stack.translatesAutoresizingMaskIntoConstraints = false
+        background.addSubview(stack)
+        NSLayoutConstraint.activate([
+            stack.leadingAnchor.constraint(equalTo: background.leadingAnchor, constant: 28),
+            stack.trailingAnchor.constraint(equalTo: background.trailingAnchor, constant: -28),
+            stack.topAnchor.constraint(equalTo: background.topAnchor, constant: 32),
+            stack.bottomAnchor.constraint(lessThanOrEqualTo: background.bottomAnchor, constant: -24)
+        ])
+        [textBox, addressBox, buttons].forEach { $0.widthAnchor.constraint(equalTo: stack.widthAnchor).isActive = true }
+        if hasExisting, let row = arranged.first(where: { $0 is NSStackView }) { row.widthAnchor.constraint(equalTo: stack.widthAnchor).isActive = true }
+        setContentSize(NSSize(width: 448, height: stack.fittingSize.height + 56))
+    }
+    required init?(coder: NSCoder) { fatalError() }
+
+    func present(in parent: NSWindow) {
+        parent.beginSheet(self)
+        makeFirstResponder(addressBox.field)
+        addressBox.field.selectText(nil)
+    }
+    @objc private func focusAddress() { makeFirstResponder(addressBox.field) }
+    @objc private func cancel() { dismiss() }
+    @objc private func removeLink() { dismiss(); onRemove?() }
+    override func cancelOperation(_ sender: Any?) { dismiss() }
+
+    func dismiss() {
+        if let parent = sheetParent { parent.endSheet(self) } else { orderOut(nil) }
+        onDismiss?()
+    }
+    @objc private func submit() {
+        guard let url = normalizedURL(addressBox.field.stringValue) else {
+            errorLabel.stringValue = "Geçerli bir http, https veya mailto adresi gir."
+            errorLabel.isHidden = false
+            NSSound.beep()
+            makeFirstResponder(addressBox.field)
+            return
+        }
+        var title = textBox.field.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
+        if title.isEmpty { title = url.absoluteString }
+        dismiss()
+        onSubmit?(title, url)
+    }
+    private func normalizedURL(_ raw: String) -> URL? {
+        var value = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !value.isEmpty else { return nil }
+        if !value.contains(":") { value = "https://" + value }
+        guard let url = URL(string: value), let scheme = url.scheme?.lowercased(),
+              ["https", "http", "mailto"].contains(scheme),
+              (scheme == "mailto" ? !url.path.isEmpty : url.host?.isEmpty == false) else { return nil }
+        return url
+    }
+}
+
+@MainActor
 final class Background: NSView {
     var picture: NSImage?
     var color: NSColor = palettes[0].color
@@ -62,7 +724,11 @@ final class Background: NSView {
             let scale = max(bounds.width / picture.size.width, bounds.height / picture.size.height)
             let size = NSSize(width: picture.size.width * scale, height: picture.size.height * scale)
             picture.draw(in: NSRect(x: (bounds.width-size.width)/2, y: (bounds.height-size.height)/2, width: size.width, height: size.height))
-            NSColor.black.withAlphaComponent(0.60).setFill(); bounds.fill()
+            NSColor.black.withAlphaComponent(0.52).setFill(); bounds.fill()
+        } else {
+            let radius = max(bounds.width, bounds.height) * 0.78
+            NSGradient(colors: [NSColor.black.withAlphaComponent(0), NSColor.black.withAlphaComponent(0.30)])!
+                .draw(in: NSBezierPath(ovalIn: NSRect(x: bounds.midX - radius, y: bounds.midY - radius * 0.62, width: radius * 2, height: radius * 1.24)), relativeCenterPosition: .zero)
         }
     }
 }
@@ -71,56 +737,111 @@ final class Background: NSView {
 func landscape(_ index: Int) -> NSImage {
     let size = NSSize(width: 1920, height: 1200)
     return NSImage(size: size, flipped: false) { rect in
-        let skies: [(NSColor, NSColor)] = [
-            (.init(srgbRed: 0.29, green: 0.43, blue: 0.48, alpha: 1), .init(srgbRed: 0.70, green: 0.77, blue: 0.74, alpha: 1)),
-            (.init(srgbRed: 0.27, green: 0.20, blue: 0.40, alpha: 1), .init(srgbRed: 0.94, green: 0.53, blue: 0.36, alpha: 1)),
-            (.init(srgbRed: 0.12, green: 0.27, blue: 0.26, alpha: 1), .init(srgbRed: 0.53, green: 0.65, blue: 0.54, alpha: 1)),
-            (.init(srgbRed: 0.38, green: 0.49, blue: 0.56, alpha: 1), .init(srgbRed: 0.91, green: 0.75, blue: 0.54, alpha: 1)),
-            (.init(srgbRed: 0.025, green: 0.04, blue: 0.12, alpha: 1), .init(srgbRed: 0.16, green: 0.13, blue: 0.30, alpha: 1)),
-            (.init(srgbRed: 0.23, green: 0.47, blue: 0.59, alpha: 1), .init(srgbRed: 0.73, green: 0.82, blue: 0.80, alpha: 1)),
-            (.init(srgbRed: 0.34, green: 0.30, blue: 0.53, alpha: 1), .init(srgbRed: 0.77, green: 0.64, blue: 0.75, alpha: 1)),
-            (.init(srgbRed: 0.22, green: 0.39, blue: 0.55, alpha: 1), .init(srgbRed: 0.79, green: 0.86, blue: 0.88, alpha: 1)),
-            (.init(srgbRed: 0.32, green: 0.33, blue: 0.29, alpha: 1), .init(srgbRed: 0.86, green: 0.65, blue: 0.40, alpha: 1)),
-            (.init(srgbRed: 0.04, green: 0.09, blue: 0.19, alpha: 1), .init(srgbRed: 0.26, green: 0.37, blue: 0.46, alpha: 1))
+        struct Scene {
+            let top: NSColor
+            let bottom: NSColor
+            let glow: NSColor
+            let glowSize: CGFloat
+            let glowX: CGFloat
+            let glowY: CGFloat
+            let ridge: (CGFloat, CGFloat, CGFloat)
+            let amplitude: CGFloat
+            let trees: Bool
+        }
+        let d = { (r: Double, g: Double, b: Double) in NSColor(srgbRed: r, green: g, blue: b, alpha: 1) }
+        let scenes: [Scene] = [
+            Scene(top: d(0.32, 0.42, 0.47), bottom: d(0.76, 0.80, 0.78), glow: d(1, 0.95, 0.86), glowSize: 260, glowX: 0.28, glowY: 0.30, ridge: (0.35, 0.42, 0.46), amplitude: 120, trees: false),
+            Scene(top: d(0.24, 0.16, 0.36), bottom: d(0.96, 0.56, 0.34), glow: d(1, 0.82, 0.54), glowSize: 300, glowX: 0.72, glowY: 0.28, ridge: (0.30, 0.19, 0.24), amplitude: 130, trees: false),
+            Scene(top: d(0.11, 0.26, 0.25), bottom: d(0.58, 0.68, 0.57), glow: d(0.93, 0.96, 0.86), glowSize: 200, glowX: 0.22, glowY: 0.34, ridge: (0.14, 0.29, 0.25), amplitude: 110, trees: true),
+            Scene(top: d(0.44, 0.55, 0.63), bottom: d(0.93, 0.79, 0.58), glow: d(1, 0.92, 0.72), glowSize: 340, glowX: 0.63, glowY: 0.26, ridge: (0.80, 0.63, 0.42), amplitude: 70, trees: false),
+            Scene(top: d(0.020, 0.031, 0.086), bottom: d(0.13, 0.11, 0.26), glow: d(0.86, 0.89, 1), glowSize: 190, glowX: 0.24, glowY: 0.30, ridge: (0.07, 0.09, 0.16), amplitude: 140, trees: false),
+            Scene(top: d(0.26, 0.48, 0.58), bottom: d(0.82, 0.87, 0.84), glow: d(1, 0.97, 0.90), glowSize: 240, glowX: 0.78, glowY: 0.33, ridge: (0.34, 0.50, 0.54), amplitude: 55, trees: false),
+            Scene(top: d(0.30, 0.26, 0.50), bottom: d(0.82, 0.68, 0.78), glow: d(1, 0.90, 0.86), glowSize: 280, glowX: 0.34, glowY: 0.27, ridge: (0.42, 0.30, 0.48), amplitude: 120, trees: false),
+            Scene(top: d(0.30, 0.44, 0.60), bottom: d(0.86, 0.90, 0.92), glow: d(1, 0.99, 0.96), glowSize: 300, glowX: 0.58, glowY: 0.24, ridge: (0.70, 0.76, 0.80), amplitude: 115, trees: false),
+            Scene(top: d(0.36, 0.34, 0.28), bottom: d(0.90, 0.68, 0.42), glow: d(1, 0.86, 0.60), glowSize: 260, glowX: 0.70, glowY: 0.30, ridge: (0.52, 0.34, 0.20), amplitude: 105, trees: true),
+            Scene(top: d(0.024, 0.055, 0.13), bottom: d(0.20, 0.31, 0.40), glow: d(0.92, 0.95, 1), glowSize: 210, glowX: 0.66, glowY: 0.28, ridge: (0.10, 0.16, 0.24), amplitude: 125, trees: false)
         ]
-        NSGradient(starting: skies[index].1, ending: skies[index].0)!.draw(in: rect, angle: 90)
-        if [1, 4, 9].contains(index) {
-            NSColor(srgbRed: 1, green: 0.88, blue: 0.68, alpha: 0.85).setFill()
-            NSBezierPath(ovalIn: NSRect(x: 1390, y: 750, width: index == 1 ? 170 : 85, height: index == 1 ? 170 : 85)).fill()
+        let scene = scenes[min(max(index, 0), scenes.count - 1)]
+
+        NSGradient(starting: scene.top, ending: scene.bottom)!.draw(in: rect, angle: 90)
+
+        // Atmospheric glow behind the sun or moon.
+        let center = NSPoint(x: scene.glowX * size.width, y: scene.glowY * size.height)
+        for step in stride(from: 4, through: 1, by: -1) {
+            let radius = scene.glowSize * CGFloat(step) * 0.62
+            NSGradient(colors: [scene.glow.withAlphaComponent(0.16), scene.glow.withAlphaComponent(0)])!
+                .draw(in: NSBezierPath(ovalIn: NSRect(x: center.x - radius, y: center.y - radius, width: radius * 2, height: radius * 2)), relativeCenterPosition: .zero)
         }
-        if index == 4 || index == 9 {
-            for i in 0..<160 {
-                let x = CGFloat((i * 7919 + 41) % 1920), y = CGFloat((i * 3571 + 500) % 1200)
-                NSColor.white.withAlphaComponent(0.25 + Double(i % 6) * 0.1).setFill()
-                NSBezierPath(ovalIn: NSRect(x: x, y: y, width: 2, height: 2)).fill()
+        if [4, 9].contains(index) {
+            for i in 0..<190 {
+                let x = CGFloat((i * 7919 + 41) % 1920), y = CGFloat((i * 3571 + 500) % 1050)
+                let alpha = 0.16 + Double(i % 7) * 0.09
+                scene.glow.withAlphaComponent(alpha).setFill()
+                let dot = CGFloat(1 + i % 3)
+                NSBezierPath(ovalIn: NSRect(x: x, y: y, width: dot, height: dot)).fill()
             }
         }
-        for layer in 0..<5 {
-            let path = NSBezierPath(); path.move(to: .zero)
-            let base = CGFloat(470 - layer * 80)
+        let orbRadius: CGFloat = index == 1 ? 74 : 34
+        NSGradient(colors: [scene.glow.withAlphaComponent(0.98), scene.glow.withAlphaComponent(0.55)])!
+            .draw(in: NSBezierPath(ovalIn: NSRect(x: center.x - orbRadius, y: center.y - orbRadius, width: orbRadius * 2, height: orbRadius * 2)), angle: 90)
+
+        // Layered ridges with atmospheric perspective.
+        for layer in 0..<6 {
+            let path = NSBezierPath()
+            path.move(to: .zero)
+            let base = CGFloat(520 - layer * 74)
             path.line(to: NSPoint(x: 0, y: base))
-            for step in 0...24 {
-                let x = CGFloat(step) * 80
-                let wave = sin(Double(step) * 0.43 + Double(layer) * 1.7 + Double(index))
-                let height = CGFloat(wave) * CGFloat(index == 3 || index == 5 ? 55 : 150)
-                path.line(to: NSPoint(x: x, y: base + height))
+            let steps = 38
+            let wave = scene.amplitude * (1 + CGFloat(layer) * 0.12)
+            for step in 0...steps {
+                let x = CGFloat(step) / CGFloat(steps) * size.width
+                let phase = Double(step) / Double(steps) * 5.2 + Double(layer) * 1.35 + Double(index) * 0.9
+                let y = base + CGFloat(sin(phase) * 0.62 + sin(phase * 2.1 + 0.7) * 0.38) * wave
+                path.line(to: NSPoint(x: x, y: y))
             }
-            path.line(to: NSPoint(x: 1920, y: 0)); path.close()
-            let tint: NSColor
-            if index == 3 { tint = NSColor(srgbRed: 0.72-Double(layer)*0.07, green: 0.51-Double(layer)*0.05, blue: 0.31-Double(layer)*0.03, alpha: 1) }
-            else if index == 6 { tint = NSColor(srgbRed: 0.41-Double(layer)*0.05, green: 0.32-Double(layer)*0.04, blue: 0.52-Double(layer)*0.05, alpha: 1) }
-            else if index == 8 { tint = NSColor(srgbRed: 0.49-Double(layer)*0.07, green: 0.29-Double(layer)*0.04, blue: 0.16-Double(layer)*0.02, alpha: 1) }
-            else if index == 7 { tint = NSColor(white: 0.80-Double(layer)*0.12, alpha: 1) }
-            else { tint = NSColor(srgbRed: 0.23-Double(layer)*0.04, green: 0.36-Double(layer)*0.05, blue: 0.39-Double(layer)*0.05, alpha: 1) }
-            tint.setFill(); path.fill()
-        }
-        if index == 2 || index == 8 {
-            for i in 0..<42 {
-                let x = CGFloat(i * 49), h = CGFloat(140 + (i * 73) % 230)
-                let tree = NSBezierPath(); tree.move(to: NSPoint(x: x, y: 75)); tree.line(to: NSPoint(x: x + 65, y: 75+h)); tree.line(to: NSPoint(x: x+130, y: 75)); tree.close()
-                NSColor(srgbRed: 0.045, green: 0.13, blue: 0.11, alpha: 0.8).setFill(); tree.fill()
+            path.line(to: NSPoint(x: size.width, y: 0))
+            path.close()
+
+            let depth = CGFloat(layer) / 5
+            let shade = NSColor(
+                srgbRed: scene.ridge.0 * (1 - depth * 0.55) + 0.012,
+                green: scene.ridge.1 * (1 - depth * 0.55) + 0.014,
+                blue: scene.ridge.2 * (1 - depth * 0.55) + 0.020,
+                alpha: 1
+            )
+            shade.setFill(); path.fill()
+
+            // A rim of light along the crest for the nearer layers.
+            if layer >= 2 {
+                scene.glow.withAlphaComponent(0.045 + Double(layer) * 0.012).setStroke()
+                path.lineWidth = 1.4
+                path.stroke()
             }
         }
+        if scene.trees {
+            for i in 0..<54 {
+                let x = CGFloat(i * 37 + (index == 8 ? 11 : 0))
+                let h = CGFloat(90 + (i * 73) % 170)
+                let tree = NSBezierPath()
+                tree.move(to: NSPoint(x: x, y: 62))
+                tree.line(to: NSPoint(x: x + 26, y: 62 + h))
+                tree.line(to: NSPoint(x: x + 52, y: 62))
+                tree.close()
+                NSColor(srgbRed: 0.028, green: 0.075, blue: 0.065, alpha: 0.55 + Double(i % 4) * 0.08).setFill()
+                tree.fill()
+            }
+        }
+
+        // Grain for a printed, analog feel.
+        for _ in 0..<2600 {
+            let x = CGFloat.random(in: 0...size.width)
+            let y = CGFloat.random(in: 0...size.height)
+            NSColor.white.withAlphaComponent(CGFloat.random(in: 0.01...0.032)).setFill()
+            NSBezierPath(ovalIn: NSRect(x: x, y: y, width: 1.3, height: 1.3)).fill()
+        }
+        // Vignette keeps the eye on the column of text.
+        NSGradient(colors: [NSColor.black.withAlphaComponent(0), NSColor.black.withAlphaComponent(0.38)])!
+            .draw(in: NSBezierPath(rect: rect), relativeCenterPosition: NSPoint(x: 0, y: 0.18))
         return true
     }
 }
@@ -132,15 +853,23 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextViewDelegate, NS
     let editor = NSTextView()
     let scroll = NSScrollView()
     var settings: NSPanel?
+    var swatches: [SwatchButton] = []
+    var sceneTiles: [SceneTile] = []
+    var settingsStatusLabel: NSTextField?
+    var linkSheet: LinkSheet?
     var ink: NSColor = .white
-    let sidebar = NSVisualEffectView()
-    let noteList = NSStackView()
+    let sidebar = SidebarPanel()
+    let noteList = FlippedStackView()
+    let noteCountLabel = NSTextField(labelWithString: "")
     var noteIDs: [String] = []
     var currentNoteID = ""
     var currentNoteDirty = false
     var noteDates: [String: NoteDates] = [:]
     let sortPicker = NSPopUpButton()
-    let sidebarWidth: CGFloat = 340
+    let hud = HUDView()
+    var hudFadeTimer: Timer?
+    var hudRevealMonitor: Any?
+    let sidebarWidth = Theme.sidebarWidth
     let dateFormatter: DateFormatter = {
         let formatter = DateFormatter()
         formatter.locale = Locale(identifier: "tr_TR")
@@ -246,7 +975,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextViewDelegate, NS
         guard saveCurrentNote() else { return }
         let id = UUID().uuidString
         do {
-            let data = NSAttributedString(string: "", attributes: [.font: NSFont.systemFont(ofSize: 24)]).rtf(from: NSRange(location: 0, length: 0), documentAttributes: [:])!
+            let data = NSAttributedString(string: "", attributes: [.font: Theme.writingFont()]).rtf(from: NSRange(location: 0, length: 0), documentAttributes: [:])!
             try data.write(to: noteURL(id), options: .atomic)
             let now = Date(); noteDates[id] = NoteDates(createdAt: now, updatedAt: now)
             noteIDs.insert(id, at: 0)
@@ -260,6 +989,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextViewDelegate, NS
     }
     @objc func deleteNote(_ sender: NSButton) {
         guard let id = sender.identifier?.rawValue, noteIDs.contains(id) else { return }
+        confirmDelete(id)
+    }
+    func confirmDelete(_ id: String) {
+        guard noteIDs.contains(id) else { return }
         let alert = NSAlert()
         alert.messageText = "Yazıyı sil?"
         alert.informativeText = "“\(titleForNote(id))” Çöp Sepeti’ne taşınacak. Gerekirse Finder’dan geri alabilirsin."
@@ -276,7 +1009,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextViewDelegate, NS
                     else { self.newNote() }
                 }
                 self.rebuildNotes()
-                self.sidebar.isHidden = false
             } catch { self.showError(error) }
         }
     }
@@ -291,59 +1023,128 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextViewDelegate, NS
         sortNotes()
         for view in noteList.arrangedSubviews { noteList.removeArrangedSubview(view); view.removeFromSuperview() }
         for id in noteIDs {
-            let button = NSButton(title: (id == currentNoteID ? "●  " : "") + titleForNote(id), target: self, action: #selector(selectNote))
-            button.identifier = NSUserInterfaceItemIdentifier(id)
-            button.alignment = .left; button.bezelStyle = .recessed
-            button.font = .systemFont(ofSize: 14, weight: id == currentNoteID ? .semibold : .regular)
-            button.lineBreakMode = .byTruncatingTail
-            button.heightAnchor.constraint(equalToConstant: 30).isActive = true
-            let delete = NSButton(image: NSImage(systemSymbolName: "trash", accessibilityDescription: "Yazıyı sil")!, target: self, action: #selector(deleteNote))
-            delete.identifier = NSUserInterfaceItemIdentifier(id)
-            delete.bezelStyle = .recessed; delete.toolTip = "Yazıyı Çöp Sepeti’ne taşı"
-            delete.widthAnchor.constraint(equalToConstant: 28).isActive = true
-            let titleRow = NSStackView(views: [button, delete]); titleRow.spacing = 4
-            button.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
             let dates = noteDates[id]!
-            let created = NSTextField(labelWithString: "Eklendi: " + dateFormatter.string(from: dates.createdAt))
-            let updated = NSTextField(labelWithString: "Güncellendi: " + dateFormatter.string(from: dates.updatedAt))
-            for label in [created, updated] { label.font = .systemFont(ofSize: 11); label.textColor = .secondaryLabelColor }
-            let row = NSStackView(views: [titleRow, created, updated])
-            row.orientation = .vertical; row.alignment = .width; row.spacing = 4
-            row.edgeInsets = NSEdgeInsets(top: 6, left: 4, bottom: 10, right: 4)
+            let row = NoteRow(
+                id: id,
+                title: titleForNote(id),
+                subtitle: "\(Theme.relativeDate(dates.updatedAt)) · \(Self.wordCountLabel(for: wordCount(id)))",
+                selected: id == currentNoteID
+            )
+            row.onSelect = { [weak self] id in self?.openNote(id) }
+            row.onDelete = { [weak self] id in self?.confirmDelete(id) }
             noteList.addArrangedSubview(row)
+            row.widthAnchor.constraint(equalTo: noteList.widthAnchor).isActive = true
         }
+        noteCountLabel.stringValue = noteIDs.count == 1 ? "1 yazı" : "\(noteIDs.count) yazı"
+    }
+    func wordCount(_ id: String) -> Int {
+        let text: String
+        if id == currentNoteID { text = editor.string }
+        else { text = (try? Data(contentsOf: noteURL(id))).flatMap { NSAttributedString(rtf: $0, documentAttributes: nil)?.string } ?? "" }
+        return text.split(whereSeparator: { $0.isWhitespace || $0.isNewline }).count
+    }
+    static func wordCountLabel(for count: Int) -> String {
+        count == 1 ? "1 kelime" : "\(count) kelime"
     }
     func setupSidebar() {
         sidebar.material = .sidebar; sidebar.blendingMode = .withinWindow; sidebar.state = .active
+        sidebar.appearance = NSAppearance(named: .darkAqua)
         sidebar.isHidden = true; sidebar.translatesAutoresizingMaskIntoConstraints = false
         background.addSubview(sidebar)
-        NSLayoutConstraint.activate([sidebar.leadingAnchor.constraint(equalTo: background.leadingAnchor), sidebar.topAnchor.constraint(equalTo: background.topAnchor), sidebar.bottomAnchor.constraint(equalTo: background.bottomAnchor), sidebar.widthAnchor.constraint(equalToConstant: sidebarWidth)])
-        let header = NSTextField(labelWithString: "Yazılarım"); header.font = .systemFont(ofSize: 22, weight: .semibold)
-        let newButton = NSButton(title: "+  Yeni yazı", target: self, action: #selector(newNote))
+        NSLayoutConstraint.activate([sidebar.leadingAnchor.constraint(equalTo: background.leadingAnchor), sidebar.topAnchor.constraint(equalTo: background.topAnchor), sidebar.bottomAnchor.constraint(equalTo: background.bottomAnchor), sidebar.widthAnchor.constraint(equalToConstant: Theme.sidebarWidth)])
+
+        let eyebrow = NSTextField(labelWithAttributedString: NSAttributedString(string: "KODMOZ WRITER", attributes: Theme.tracking(9)))
+        let header = NSTextField(labelWithString: "Yazılarım")
+        header.font = Theme.writingFont(30)
+        header.textColor = NSColor.white.withAlphaComponent(0.96)
+        noteCountLabel.font = .systemFont(ofSize: 11, weight: .medium)
+        noteCountLabel.textColor = NSColor.white.withAlphaComponent(0.40)
+        let headingRow = NSStackView(views: [header, NSView()])
+        headingRow.orientation = .horizontal
+        headingRow.addArrangedSubview(noteCountLabel)
+        noteCountLabel.setContentHuggingPriority(.required, for: .horizontal)
+
+        let newButton = FilledButton(title: "Yeni yazı", plus: true, action: #selector(newNote), target: self)
+
         sortPicker.addItems(withTitles: NoteSort.allCases.map(\.title))
         for (index, order) in NoteSort.allCases.enumerated() { sortPicker.item(at: index)?.tag = order.rawValue }
         sortPicker.selectItem(withTag: sortOrder.rawValue)
         sortPicker.target = self; sortPicker.action = #selector(changeSort)
         sortPicker.setAccessibilityLabel("Notları sırala")
-        let appearance = NSButton(title: "Görünüm ve arka plan…", target: self, action: #selector(showSettings))
-        let hide = NSButton(title: "Menüyü gizle  ‹", target: self, action: #selector(hideSidebar))
+        sortPicker.isBordered = false
+        sortPicker.font = .systemFont(ofSize: 11.5, weight: .regular)
+        sortPicker.contentTintColor = NSColor.white.withAlphaComponent(0.60)
+        sortPicker.setContentHuggingPriority(.defaultLow, for: .horizontal)
+
         let listScroll = NSScrollView(); listScroll.drawsBackground = false; listScroll.hasVerticalScroller = true; listScroll.autohidesScrollers = true
-        noteList.orientation = .vertical; noteList.alignment = .width; noteList.spacing = 6
+        noteList.orientation = .vertical; noteList.alignment = .leading; noteList.spacing = 2
         noteList.translatesAutoresizingMaskIntoConstraints = false; listScroll.documentView = noteList
-        NSLayoutConstraint.activate([noteList.widthAnchor.constraint(equalTo: listScroll.contentView.widthAnchor)])
-        let stack = NSStackView(views: [header, newButton, sortPicker, listScroll, appearance, hide]); stack.orientation = .vertical; stack.alignment = .width; stack.spacing = 18
+        NSLayoutConstraint.activate([
+            noteList.leadingAnchor.constraint(equalTo: listScroll.contentView.leadingAnchor),
+            noteList.trailingAnchor.constraint(equalTo: listScroll.contentView.trailingAnchor),
+            noteList.topAnchor.constraint(equalTo: listScroll.contentView.topAnchor),
+            noteList.widthAnchor.constraint(equalTo: listScroll.contentView.widthAnchor)
+        ])
+
+        let appearance = FooterButton(title: "Görünüm ve arka plan", symbol: "paintpalette", action: #selector(showSettings), target: self)
+        let hide = FooterButton(title: "Menüyü gizle", symbol: "chevron.left", action: #selector(hideSidebar), target: self)
+        let footer = NSStackView(views: [appearance, hide])
+        footer.orientation = .horizontal; footer.spacing = 4; footer.alignment = .centerY
+
+        let stack = NSStackView(views: [eyebrow, headingRow, newButton, sortPicker, listScroll, footer])
+        stack.orientation = .vertical; stack.alignment = .leading; stack.spacing = 14
+        stack.setCustomSpacing(4, after: eyebrow)
+        stack.setCustomSpacing(18, after: headingRow)
+        stack.setCustomSpacing(10, after: newButton)
         stack.translatesAutoresizingMaskIntoConstraints = false; sidebar.addSubview(stack)
-        NSLayoutConstraint.activate([stack.leadingAnchor.constraint(equalTo: sidebar.leadingAnchor, constant: 20), stack.trailingAnchor.constraint(equalTo: sidebar.trailingAnchor, constant: -20), stack.topAnchor.constraint(equalTo: sidebar.topAnchor, constant: 55), stack.bottomAnchor.constraint(equalTo: sidebar.bottomAnchor, constant: -30)])
+        NSLayoutConstraint.activate([stack.leadingAnchor.constraint(equalTo: sidebar.leadingAnchor, constant: 18), stack.trailingAnchor.constraint(equalTo: sidebar.trailingAnchor, constant: -18), stack.topAnchor.constraint(equalTo: sidebar.topAnchor, constant: 52), stack.bottomAnchor.constraint(equalTo: sidebar.bottomAnchor, constant: -22)])
+        [headingRow, newButton, listScroll, footer].forEach { $0.widthAnchor.constraint(equalTo: stack.widthAnchor).isActive = true }
         window.acceptsMouseMovedEvents = true
         eventMonitor = NSEvent.addLocalMonitorForEvents(matching: [.mouseMoved, .leftMouseDown]) { [weak self] event in
             guard let self, event.window === self.window else { return event }
             let point = self.background.convert(event.locationInWindow, from: nil)
             if event.type == .mouseMoved {
-                if point.x <= 14 { self.sidebar.isHidden = false }
-                else if point.x > self.sidebarWidth + 20 { self.hideSidebar() }
-            } else if point.x > self.sidebarWidth { self.hideSidebar() }
+                if point.x <= 12 { self.showSidebar() }
+                else if point.x > Theme.sidebarWidth + 24 { self.hideSidebar() }
+            } else if point.x > Theme.sidebarWidth { self.hideSidebar() }
             return event
         }
+    }
+    func showSidebar() {
+        guard sidebar.isHidden else { return }
+        sidebar.isHidden = false
+    }
+    func setupHUD() {
+        hud.translatesAutoresizingMaskIntoConstraints = false
+        background.addSubview(hud)
+        NSLayoutConstraint.activate([
+            hud.centerXAnchor.constraint(equalTo: scroll.centerXAnchor),
+            hud.bottomAnchor.constraint(equalTo: background.bottomAnchor, constant: -22)
+        ])
+        hudFadeTimer = Timer.scheduledTimer(withTimeInterval: 2.4, repeats: true) { [weak self] _ in
+            MainActor.assumeIsolated {
+                guard let self, self.hud.alphaValue > 0.02 else { return }
+                NSAnimationContext.runAnimationGroup { context in
+                    context.duration = 0.7
+                    self.hud.animator().alphaValue = 0
+                }
+            }
+        }
+        window.acceptsMouseMovedEvents = true
+        let tracker = NSEvent.addLocalMonitorForEvents(matching: [.mouseMoved, .keyDown]) { [weak self] event in
+            guard let self, event.window === self.window else { return event }
+            self.revealHUD()
+            return event
+        }
+        hudRevealMonitor = tracker
+    }
+    func revealHUD() {
+        guard !hud.isHidden else { return }
+        hud.alphaValue = 1
+    }
+    func refreshHUD() {
+        let words = editor.string.split(whereSeparator: { $0.isWhitespace || $0.isNewline }).count
+        hud.update(words: words, saved: !currentNoteDirty)
     }
     @objc func hideSidebar() { sidebar.isHidden = true }
     @objc func toggleSidebar() { sidebar.isHidden.toggle() }
@@ -361,11 +1162,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextViewDelegate, NS
         window.makeFirstResponder(editor)
     }
     func windowDidResize(_ notification: Notification) {
-        editor.textContainerInset = NSSize(width: 32, height: 48)
+        editor.textContainerInset = NSSize(width: 0, height: 0)
         let width = scroll.contentSize.width
         if width > 0 {
             editor.setFrameSize(NSSize(width: width, height: max(editor.frame.height, scroll.contentSize.height)))
-            editor.textContainer?.containerSize = NSSize(width: max(1, width - 64), height: CGFloat.greatestFiniteMagnitude)
+            editor.textContainer?.containerSize = NSSize(width: max(1, width), height: CGFloat.greatestFiniteMagnitude)
         }
         scroll.contentView.scroll(to: NSPoint(x: 0, y: scroll.contentView.bounds.origin.y))
         background.needsDisplay = true
@@ -392,19 +1193,21 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextViewDelegate, NS
         editor.setFrameSize(NSSize(width: 800, height: 600))
         editor.minSize = NSSize(width: 0, height: 600); editor.maxSize = NSSize(width: CGFloat.greatestFiniteMagnitude, height: CGFloat.greatestFiniteMagnitude)
         editor.textContainer?.widthTracksTextView = true
-        editor.textContainerInset = NSSize(width: 32, height: 48)
-        editor.textContainer?.lineFragmentPadding = 12
-        editor.font = .systemFont(ofSize: 24); editor.delegate = self
+        editor.textContainerInset = NSSize(width: 0, height: 0)
+        editor.textContainer?.lineFragmentPadding = 0
+        editor.font = Theme.writingFont(); editor.delegate = self
         scroll.documentView = editor
         background.addSubview(scroll)
         scroll.translatesAutoresizingMaskIntoConstraints = false
         NSLayoutConstraint.activate([
             scroll.centerXAnchor.constraint(equalTo: background.centerXAnchor),
-            scroll.widthAnchor.constraint(lessThanOrEqualTo: background.widthAnchor, multiplier: 0.84),
-            scroll.widthAnchor.constraint(equalToConstant: 860).withPriority(.defaultHigh),
-            scroll.topAnchor.constraint(equalTo: background.topAnchor), scroll.bottomAnchor.constraint(equalTo: background.bottomAnchor)
+            scroll.widthAnchor.constraint(lessThanOrEqualTo: background.widthAnchor, multiplier: 0.88),
+            scroll.widthAnchor.constraint(equalToConstant: Theme.columnWidth).withPriority(.defaultHigh),
+            scroll.bottomAnchor.constraint(equalTo: background.bottomAnchor),
+            scroll.topAnchor.constraint(equalTo: background.topAnchor, constant: 96),
         ])
         setupSidebar()
+        setupHUD()
         loadNotes()
         let kind = defaults.string(forKey: "kind") ?? "color"
         if kind == "scene" { setScene(defaults.integer(forKey: "scene")) }
@@ -416,6 +1219,34 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextViewDelegate, NS
         NSApp.activate(ignoringOtherApps: true)
         NSApp.presentationOptions = [.autoHideDock, .autoHideMenuBar]
         windowDidResize(Notification(name: NSWindow.didResizeNotification))
+        if let index = CommandLine.arguments.firstIndex(of: "--snapshot"), CommandLine.arguments.count > index + 1 {
+            runSnapshotMode(CommandLine.arguments[index + 1])
+        }
+    }
+    func runSnapshotMode(_ directory: String) {
+        try? FileManager.default.createDirectory(atPath: directory, withIntermediateDirectories: true)
+        snapshotView(background, to: directory + "/writing.png")
+        showSidebar()
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.9) { [self] in
+            snapshotView(background, to: directory + "/sidebar.png")
+            showSettings()
+            DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) { [self] in
+                if let content = settings?.contentView { content.displayIfNeeded(); snapshotView(content, to: directory + "/settings.png") }
+                closeSettings()
+                addLink()
+                DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) { [self] in
+                    if let content = linkSheet?.contentView { content.displayIfNeeded(); snapshotView(content, to: directory + "/link.png") }
+                    linkSheet?.dismiss()
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) { NSApp.terminate(nil) }
+                }
+            }
+        }
+    }
+    func snapshotView(_ view: NSView, to path: String) {
+        guard let rep = view.bitmapImageRepForCachingDisplay(in: view.bounds) else { return }
+        view.cacheDisplay(in: view.bounds, to: rep)
+        guard let data = rep.representation(using: .png, properties: [:]) else { return }
+        try? data.write(to: URL(fileURLWithPath: path))
     }
     func buildMenu() {
         let menu = NSMenu()
@@ -447,76 +1278,52 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextViewDelegate, NS
         NSApp.mainMenu = menu
     }
     @objc func addLink() {
+        if let sheet = linkSheet, sheet.isVisible { return }
+        linkSheet = nil
         let range = editor.selectedRange()
         let selected = (editor.string as NSString).substring(with: range)
         let existing = range.location < editor.string.utf16.count ? editor.textStorage?.attribute(.link, at: range.location, effectiveRange: nil) : nil
-        let alert = NSAlert()
-        alert.messageText = "Bağlantı ekle"
-        alert.informativeText = "Bağlantı metnini ve adresini gir. Açmak için ⌘ tuşuyla tıkla."
-        alert.addButton(withTitle: "Ekle"); alert.addButton(withTitle: "İptal")
-        if existing != nil { alert.addButton(withTitle: "Bağlantıyı kaldır") }
-        let text = NSTextField(string: selected); text.placeholderString = "Bağlantı metni"; text.setAccessibilityLabel("Bağlantı metni")
-        let address = NSTextField(string: existing.map { String(describing: $0) } ?? "")
-        address.placeholderString = "https://ornek.com"; address.setAccessibilityLabel("Bağlantı adresi")
-        let form = NSView(frame: NSRect(x: 0, y: 0, width: 420, height: 156))
-        let textLabel = NSTextField(labelWithString: "Metin")
-        textLabel.frame = NSRect(x: 0, y: 132, width: 420, height: 20)
-        text.frame = NSRect(x: 0, y: 96, width: 420, height: 30)
-        let addressLabel = NSTextField(labelWithString: "Adres")
-        addressLabel.frame = NSRect(x: 0, y: 62, width: 420, height: 20)
-        address.frame = NSRect(x: 0, y: 26, width: 420, height: 30)
-        for field in [text, address] {
-            field.font = .systemFont(ofSize: 14)
-            field.isBezeled = true; field.isBordered = true
-            field.isEditable = true; field.isSelectable = true
-            field.cell?.isScrollable = true
-            field.autoresizingMask = [.width]
+        let sheet = LinkSheet(selectedText: selected, existingURL: existing.map { String(describing: $0) })
+        sheet.onDismiss = { [weak self] in self?.linkSheet = nil }
+        sheet.onSubmit = { [weak self] title, url in
+            guard let self else { return }
+            self.insertLink(title: title, url: url, in: range, selected: selected)
         }
-        textLabel.autoresizingMask = [.width]; addressLabel.autoresizingMask = [.width]
-        [textLabel, text, addressLabel, address].forEach { form.addSubview($0) }
-        text.nextKeyView = address
-        alert.accessoryView = form
-        alert.window.initialFirstResponder = selected.isEmpty ? text : address
-        alert.beginSheetModal(for: window) { response in
-            if response == .alertThirdButtonReturn {
-                guard range.length > 0, self.editor.shouldChangeText(in: range, replacementString: nil) else { return }
-                self.editor.textStorage?.removeAttribute(.link, range: range)
-                self.editor.didChangeText(); self.window.makeFirstResponder(self.editor)
-                return
-            }
-            guard response == .alertFirstButtonReturn else { return }
-            var raw = address.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
-            if !raw.contains(":") { raw = "https://" + raw }
-            guard let url = URL(string: raw), let scheme = url.scheme?.lowercased(),
-                  ["https", "http", "mailto"].contains(scheme),
-                  (scheme == "mailto" ? !url.path.isEmpty : url.host?.isEmpty == false) else {
-                self.showError(NSError(domain: "KodmozWriter", code: 2, userInfo: [NSLocalizedDescriptionKey: "Geçerli bir http, https veya mailto adresi girin."]))
-                return
-            }
-            let title = text.stringValue.isEmpty ? url.absoluteString : text.stringValue
-            let replacement: NSMutableAttributedString
-            if range.length > 0 && title == selected {
-                replacement = NSMutableAttributedString(attributedString: self.editor.textStorage!.attributedSubstring(from: range))
-            } else {
-                replacement = NSMutableAttributedString(string: title, attributes: self.editor.typingAttributes)
-            }
-            replacement.addAttribute(.link, value: url, range: NSRange(location: 0, length: replacement.length))
-            if self.editor.shouldChangeText(in: range, replacementString: title) {
-                self.editor.textStorage?.replaceCharacters(in: range, with: replacement)
-                self.editor.didChangeText()
-                self.editor.setSelectedRange(NSRange(location: range.location + replacement.length, length: 0))
-                var attrs = self.editor.typingAttributes; attrs.removeValue(forKey: .link)
-                self.editor.typingAttributes = attrs
-                self.window.makeFirstResponder(self.editor)
-            }
+        sheet.onRemove = { [weak self] in
+            guard let self else { return }
+            guard range.length > 0, self.editor.shouldChangeText(in: range, replacementString: nil) else { return }
+            self.editor.textStorage?.removeAttribute(.link, range: range)
+            self.editor.didChangeText()
+            self.window.makeFirstResponder(self.editor)
         }
+        linkSheet = sheet
+        sheet.present(in: window)
+    }
+    private func insertLink(title: String, url: URL, in range: NSRange, selected: String) {
+        let replacement: NSMutableAttributedString
+        if range.length > 0 && title == selected, let storage = editor.textStorage {
+            replacement = NSMutableAttributedString(attributedString: storage.attributedSubstring(from: range))
+        } else {
+            var attributes = editor.typingAttributes
+            attributes[.font] = attributes[.font] ?? Theme.writingFont()
+            replacement = NSMutableAttributedString(string: title, attributes: attributes)
+        }
+        replacement.addAttribute(.link, value: url, range: NSRange(location: 0, length: replacement.length))
+        guard editor.shouldChangeText(in: range, replacementString: title) else { return }
+        editor.textStorage?.replaceCharacters(in: range, with: replacement)
+        editor.didChangeText()
+        editor.setSelectedRange(NSRange(location: range.location + replacement.length, length: 0))
+        var attributes = editor.typingAttributes
+        attributes.removeValue(forKey: .link)
+        editor.typingAttributes = attributes
+        window.makeFirstResponder(editor)
     }
     @objc func bold() { toggleTrait(.boldFontMask) }
     @objc func italic() { toggleTrait(.italicFontMask) }
     func toggleTrait(_ trait: NSFontTraitMask) {
         let range = editor.selectedRange()
         let manager = NSFontManager.shared
-        let font = (range.length > 0 ? editor.textStorage?.attribute(.font, at: range.location, effectiveRange: nil) as? NSFont : editor.typingAttributes[.font] as? NSFont) ?? .systemFont(ofSize: 24)
+        let font = (range.length > 0 ? editor.textStorage?.attribute(.font, at: range.location, effectiveRange: nil) as? NSFont : editor.typingAttributes[.font] as? NSFont) ?? Theme.writingFont()
         let remove = manager.traits(of: font).contains(trait)
         if range.length == 0 {
             var attrs = editor.typingAttributes
@@ -530,6 +1337,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextViewDelegate, NS
             }
             if editor.shouldChangeText(in: range, replacementString: nil) {
                 editor.textStorage?.replaceCharacters(in: range, with: changed); editor.didChangeText()
+                editor.setSelectedRange(NSRange(location: range.location, length: changed.length))
             }
         }
     }
@@ -544,11 +1352,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextViewDelegate, NS
     func updateInk() {
         editor.textStorage?.addAttribute(.foregroundColor, value: ink, range: NSRange(location: 0, length: editor.string.utf16.count))
         editor.insertionPointColor = ink
-        editor.linkTextAttributes = [.foregroundColor: ink, .underlineStyle: NSUnderlineStyle.single.rawValue]
+        editor.linkTextAttributes = [
+            .foregroundColor: ink,
+            .underlineStyle: NSUnderlineStyle.single.rawValue,
+            .underlineColor: ink.withAlphaComponent(0.4)
+        ]
         var attrs = editor.typingAttributes; attrs[.foregroundColor] = ink
-        if attrs[.font] == nil { attrs[.font] = NSFont.systemFont(ofSize: 24) }
-        let paragraph = NSMutableParagraphStyle(); paragraph.lineSpacing = 10
+        if attrs[.font] == nil { attrs[.font] = Theme.writingFont() }
+        let paragraph = NSMutableParagraphStyle()
+        paragraph.lineSpacing = Theme.writingSize * 0.72
+        paragraph.paragraphSpacing = Theme.writingSize * 0.55
         attrs[.paragraphStyle] = paragraph; editor.typingAttributes = attrs
+        refreshHUD()
     }
     func setScene(_ index: Int) { let index = min(max(index, 0), 9); applyImage(landscape(index)); defaults.set("scene", forKey: "kind"); defaults.set(index, forKey: "scene") }
     @objc func choosePalette(_ sender: NSButton) {
@@ -569,40 +1384,170 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextViewDelegate, NS
         }
     }
     @objc func showSettings() {
-        if let settings { settings.makeKeyAndOrderFront(nil); return }
-        let panel = NSPanel(contentRect: NSRect(x: 0, y: 0, width: 650, height: 540), styleMask: [.titled, .closable], backing: .buffered, defer: false)
-        panel.title = "Görünüm"; panel.isReleasedWhenClosed = false; panel.collectionBehavior = [.fullScreenAuxiliary]
-        let stack = NSStackView(); stack.orientation = .vertical; stack.alignment = .leading; stack.spacing = 15
-        stack.translatesAutoresizingMaskIntoConstraints = false; panel.contentView!.addSubview(stack)
-        NSLayoutConstraint.activate([stack.leadingAnchor.constraint(equalTo: panel.contentView!.leadingAnchor, constant: 24), stack.trailingAnchor.constraint(equalTo: panel.contentView!.trailingAnchor, constant: -24), stack.topAnchor.constraint(equalTo: panel.contentView!.topAnchor, constant: 24)])
-        func label(_ text: String) { let label = NSTextField(labelWithString: text); label.font = .systemFont(ofSize: 13, weight: .semibold); stack.addArrangedSubview(label) }
-        label("RENKLER")
-        for row in 0..<2 {
-            let line = NSStackView(); line.spacing = 8
-            for i in row*5..<row*5+5 { let b = NSButton(title: palettes[i].name, target: self, action: #selector(choosePalette)); b.tag = i; b.bezelColor = palettes[i].color; b.widthAnchor.constraint(equalToConstant: 110).isActive = true; line.addArrangedSubview(b) }
-            stack.addArrangedSubview(line)
+        if let settings {
+            settings.makeKeyAndOrderFront(nil)
+            syncSettingsSelection()
+            return
         }
-        label("MANZARALAR")
-        for row in 0..<2 {
-            let line = NSStackView(); line.spacing = 8
-            for i in row*5..<row*5+5 {
-                let b = NSButton(title: sceneNames[i], image: landscape(i), target: self, action: #selector(chooseScene)); b.tag = i; b.imagePosition = .imageAbove; b.imageScaling = .scaleProportionallyUpOrDown
-                b.widthAnchor.constraint(equalToConstant: 110).isActive = true; b.heightAnchor.constraint(equalToConstant: 86).isActive = true; line.addArrangedSubview(b)
-            }
-            stack.addArrangedSubview(line)
+        let panel = NSPanel(contentRect: NSRect(x: 0, y: 0, width: 720, height: 620), styleMask: [.titled, .fullSizeContentView], backing: .buffered, defer: false)
+        panel.titleVisibility = .hidden
+        panel.titlebarAppearsTransparent = true
+        panel.isReleasedWhenClosed = false
+        panel.collectionBehavior = [.fullScreenAuxiliary]
+        panel.isOpaque = false
+        panel.backgroundColor = .clear
+        panel.hasShadow = true
+        panel.appearance = NSAppearance(named: .darkAqua)
+        panel.title = "Görünüm"
+        [.closeButton, .miniaturizeButton, .zoomButton].forEach { panel.standardWindowButton($0)?.isHidden = true }
+        let background = CardBackground()
+        background.material = .hudWindow
+        background.blendingMode = .behindWindow
+        background.state = .active
+        background.appearance = NSAppearance(named: .darkAqua)
+        background.wantsLayer = true
+        background.layer?.cornerRadius = 16
+        background.layer?.masksToBounds = true
+        panel.contentView = background
+
+        let eyebrow = NSTextField(labelWithAttributedString: NSAttributedString(string: "GÖRÜNÜM", attributes: Theme.tracking(9)))
+        let heading = NSTextField(labelWithString: "Atmosfer")
+        heading.font = Theme.writingFont(28)
+        heading.textColor = NSColor.white.withAlphaComponent(0.96)
+        let subtitle = NSTextField(wrappingLabelWithString: "Yazı alanının arkasındaki renk, manzara veya kendi görselin. Her seçim anında kaydedilir.")
+        subtitle.font = .systemFont(ofSize: 11.5)
+        subtitle.textColor = NSColor.white.withAlphaComponent(0.48)
+        subtitle.preferredMaxLayoutWidth = 664
+
+        func caption(_ text: String) -> NSTextField {
+            NSTextField(labelWithAttributedString: NSAttributedString(string: text, attributes: [
+                .font: NSFont.systemFont(ofSize: 9.5, weight: .semibold),
+                .kern: 1.2,
+                .foregroundColor: NSColor.white.withAlphaComponent(0.42)
+            ]))
         }
-        let custom = NSStackView(); custom.spacing = 10
-        custom.addArrangedSubview(NSButton(title: "Kendi Rengim…", target: self, action: #selector(customColor)))
-        custom.addArrangedSubview(NSButton(title: "Görsel Seç…", target: self, action: #selector(customImage))); stack.addArrangedSubview(custom)
-        label("⌘L Bağlantı   ·   ⌘B Kalın   ·   ⌘I İtalik   ·   ⌘U Altı çizili   ·   ⌘T Yazı tipi")
-        let hint = NSTextField(wrappingLabelWithString: "Her değişiklik anında kaydedilir. Yeni yazı: ⌘N. Not menüsü: sol kenar veya ⇧⌘L. ⌘S ile RTF olarak dışa aktar. Bu pencereyi kapatıp yazmaya devam et. Görseller, okunabilirlik için karartılır.")
-        hint.textColor = .secondaryLabelColor; stack.addArrangedSubview(hint)
-        settings = panel; window.addChildWindow(panel, ordered: .above); panel.center(); panel.makeKeyAndOrderFront(nil)
+
+        swatches = palettes.enumerated().map { index, palette in
+            SwatchButton(palette: palette, index: index, target: self, action: #selector(choosePalette(_:)))
+        }
+        let colorColumns = stride(from: 0, to: swatches.count, by: 5).map { start -> NSStackView in
+            let column = NSStackView(views: Array(swatches[start..<min(start + 5, swatches.count)]))
+            column.orientation = .vertical
+            column.alignment = .leading
+            column.spacing = 2
+            column.arrangedSubviews.forEach { $0.widthAnchor.constraint(equalTo: column.widthAnchor).isActive = true }
+            return column
+        }
+        let colorGrid = NSStackView(views: colorColumns)
+        colorGrid.orientation = .horizontal
+        colorGrid.distribution = .fillEqually
+        colorGrid.alignment = .top
+        colorGrid.spacing = 12
+
+        sceneTiles = (0..<sceneNames.count).map { index in
+            SceneTile(index: index, name: sceneNames[index], image: landscape(index), target: self, action: #selector(chooseScene(_:)))
+        }
+        let sceneRows = stride(from: 0, to: sceneTiles.count, by: 5).map { start -> NSStackView in
+            let row = NSStackView(views: Array(sceneTiles[start..<min(start + 5, sceneTiles.count)]))
+            row.orientation = .horizontal
+            row.distribution = .fillEqually
+            row.spacing = 8
+            return row
+        }
+        let sceneGrid = NSStackView(views: sceneRows)
+        sceneGrid.orientation = .vertical
+        sceneGrid.alignment = .leading
+        sceneGrid.spacing = 8
+        sceneRows.forEach { $0.widthAnchor.constraint(equalTo: sceneGrid.widthAnchor).isActive = true }
+
+        let customColorButton = GhostButton(title: "Özel renk…", symbol: "eyedropper", action: #selector(customColor), target: self)
+        let customImageButton = GhostButton(title: "Görsel seç…", symbol: "photo", action: #selector(customImage), target: self)
+        customColorButton.widthAnchor.constraint(equalToConstant: 132).isActive = true
+        customImageButton.widthAnchor.constraint(equalToConstant: 132).isActive = true
+        let customRow = NSStackView(views: [customColorButton, customImageButton, NSView()])
+        customRow.orientation = .horizontal
+        customRow.spacing = 8
+
+        let status = NSTextField(labelWithAttributedString: NSAttributedString(string: "", attributes: [
+            .font: NSFont.systemFont(ofSize: 10.5, weight: .medium),
+            .foregroundColor: NSColor.white.withAlphaComponent(0.40)
+        ]))
+        settingsStatusLabel = status
+
+        let shortcuts = NSTextField(labelWithString: "⌘L Bağlantı   ·   ⌘B Kalın   ·   ⌘I İtalik   ·   ⌘U Altı çizili   ·   ⌘T Yazı tipi   ·   ⌘N Yeni yazı   ·   ⇧⌘L Menü")
+        shortcuts.font = .systemFont(ofSize: 10.5)
+        shortcuts.textColor = NSColor.white.withAlphaComponent(0.34)
+
+        let footer = NSStackView(views: [status, NSView(), shortcuts])
+        footer.orientation = .horizontal
+        footer.spacing = 8
+
+        let colorsCaption = caption("RENKLER")
+        let scenesCaption = caption("MANZARALAR")
+        let stack = NSStackView(views: [eyebrow, heading, subtitle, colorsCaption, colorGrid, customRow, scenesCaption, sceneGrid, footer])
+        stack.orientation = .vertical
+        stack.alignment = .leading
+        stack.spacing = 12
+        stack.setCustomSpacing(5, after: eyebrow)
+        stack.setCustomSpacing(6, after: heading)
+        stack.setCustomSpacing(20, after: subtitle)
+        stack.setCustomSpacing(7, after: colorsCaption)
+        stack.setCustomSpacing(10, after: colorGrid)
+        stack.setCustomSpacing(18, after: customRow)
+        stack.setCustomSpacing(7, after: scenesCaption)
+        stack.setCustomSpacing(18, after: sceneGrid)
+        stack.translatesAutoresizingMaskIntoConstraints = false
+        background.addSubview(stack)
+        NSLayoutConstraint.activate([
+            stack.leadingAnchor.constraint(equalTo: background.leadingAnchor, constant: 28),
+            stack.trailingAnchor.constraint(equalTo: background.trailingAnchor, constant: -28),
+            stack.topAnchor.constraint(equalTo: background.topAnchor, constant: 30),
+            stack.bottomAnchor.constraint(equalTo: background.bottomAnchor, constant: -22)
+        ])
+        [colorGrid, customRow, sceneGrid, footer].forEach { $0.widthAnchor.constraint(equalTo: stack.widthAnchor).isActive = true }
+        let close = GhostButton(title: "Kapat", action: #selector(closeSettings), target: self)
+        close.widthAnchor.constraint(equalToConstant: 78).isActive = true
+        let closeRow = NSStackView(views: [NSView(), close])
+        closeRow.orientation = .horizontal
+        stack.addArrangedSubview(closeRow)
+
+        settings = panel
+        window.addChildWindow(panel, ordered: .above)
+        panel.setContentSize(NSSize(width: 720, height: stack.fittingSize.height + 52))
+        panel.center()
+        syncSettingsSelection()
+        panel.makeKeyAndOrderFront(nil)
+    }
+    @objc func closeSettings() { settings?.orderOut(nil) }
+    func currentPaletteIndex() -> Int? {
+        let stored = defaults.data(forKey: "color").flatMap { try? NSKeyedUnarchiver.unarchivedObject(ofClass: NSColor.self, from: $0) }
+        guard defaults.string(forKey: "kind") == "color", let stored else { return nil }
+        return palettes.firstIndex { palette in
+            guard let a = palette.color.usingColorSpace(.sRGB), let b = stored.usingColorSpace(.sRGB) else { return false }
+            return abs(a.redComponent - b.redComponent) < 0.004 && abs(a.greenComponent - b.greenComponent) < 0.004 && abs(a.blueComponent - b.blueComponent) < 0.004
+        }
+    }
+    func syncSettingsSelection() {
+        let paletteIndex = currentPaletteIndex()
+        let sceneIndex = defaults.string(forKey: "kind") == "scene" ? defaults.integer(forKey: "scene") : nil
+        for swatch in swatches { swatch.isActive = swatch.tag == paletteIndex }
+        for tile in sceneTiles { tile.isActive = tile.tag == sceneIndex }
+        let kind = defaults.string(forKey: "kind") ?? "color"
+        let label: String
+        switch kind {
+        case "scene": label = "Manzara · \(sceneNames[min(max(defaults.integer(forKey: "scene"), 0), sceneNames.count - 1)])"
+        case "customImage": label = "Kendi görselin"
+        default:
+            if let paletteIndex { label = "Renk · \(palettes[paletteIndex].name)" } else { label = "Özel renk" }
+        }
+        settingsStatusLabel?.stringValue = label
+        settingsStatusLabel?.alphaValue = 0.9
     }
     func textDidChange(_ notification: Notification) {
         guard !loadingNote else { return }
         currentNoteDirty = true
-        if saveCurrentNote() { rebuildNotes() }
+        refreshHUD()
+        if saveCurrentNote() { rebuildNotes(); refreshHUD() }
     }
     @discardableResult
     func saveCurrentNote() -> Bool {

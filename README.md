@@ -18,7 +18,7 @@ Gün batımı arka planı, üstten başlayan ortalanmış yazı sütunu ve zengi
 
 ### Renkler ve manzaralar
 
-On hazır renk, on hazır manzara ve kişisel renk/görsel seçimi.
+On hazır renk, on hazır manzara ve kişisel renk/görsel seçimi. Renkler nokta ve adlarıyla, manzaralar küçük resimleriyle listelenir; etkin seçim vurgulanır.
 
 <img src="docs/screenshots/appearance.jpg" alt="Kodmoz Writer görünüm penceresi: hazır renkler ve manzara arka planları" width="760" />
 
@@ -43,7 +43,7 @@ Gereksinimler: **macOS 14 veya üzeri**. Hazır paket Apple Silicon (M serisi) M
 
 - **Tam ekran yazma:** Açılışta ekranın tamamını kaplar. Başlık ve araç çubuğu yazma alanında görünmez.
 - **Üstten başlayan metin:** Yazı sütunu yatayda ortalanır. İlk satır üstten 48 punto boşlukla başlar. Sol iç boşluk ve satır kenar payı harflerin kırpılmasını önler.
-- **Gizli not menüsü:** Fareyi ekranın sol kenarına getirin veya `⇧⌘L` kullanın. Not seçin, yeni bir yazı açın ya da arka plan ayarlarına gidin. Fareyi yazı alanına taşıyınca menü gizlenir.
+- **Gizli not menüsü:** Fareyi ekranın sol kenarına getirin veya `⇧⌘L` kullanın. Cam efektli menüde not seçin, gradyanlı **Yeni yazı** düğmesiyle yeni bir yazı açın ya da arka plan ayarlarına gidin. Fareyi yazı alanına taşıyınca menü gizlenir.
 - **Tarihler ve sıralama:** Her notun eklenme ve son güncellenme tarihi, saat ve saniyesiyle listede görünür. Güncelleme tarihi, eklenme tarihi veya başlığa göre artan/azalan sıralama seçilebilir; tercih yeniden açılışta korunur. Notu yalnızca açmak tarihini değiştirmez. Eski notların tarihleri mevcut dosya bilgilerinden alınır.
 - **Not silme:** Her notun yanındaki çöp simgesi, onaydan sonra notu sistemin Çöp Sepeti’ne taşır. Son not silindiğinde boş bir not açılır.
 - **Birden fazla not:** `⌘N` ile yeni not oluşturun. Not başlıkları ilk dolu satırdan otomatik alınır.
