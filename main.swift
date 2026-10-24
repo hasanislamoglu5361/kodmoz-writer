@@ -63,7 +63,9 @@ enum Theme {
         let formatter = RelativeDateTimeFormatter()
         formatter.locale = Locale(identifier: "tr_TR")
         formatter.unitsStyle = .short
-        return formatter.localizedString(for: date, relativeTo: Date())
+        // A just-saved note carries a timestamp a fraction ahead of the render
+        // pass; without clamping the list reads "0 sn. sonra".
+        return formatter.localizedString(for: min(date, Date()), relativeTo: Date())
     }
 }
 
@@ -914,9 +916,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextViewDelegate, NS
     var eventMonitor: Any?
     var immersive = true
     var isShowingSaveError = false
-    let defaults = UserDefaults.standard
+    var defaults: UserDefaults = .standard
+    static var dataFolderOverride: URL?
     var saveURL: URL {
-        let folder = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0].appendingPathComponent("FocusWriter")
+        let folder = Self.dataFolderOverride ?? FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0].appendingPathComponent("FocusWriter")
         try? FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
         return folder.appendingPathComponent("Draft.rtf")
     }
@@ -1176,6 +1179,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextViewDelegate, NS
     }
     func applicationDidResignActive(_ notification: Notification) { NSApp.presentationOptions = [] }
     func applicationDidFinishLaunching(_ notification: Notification) {
+        let snapshotDirectory = snapshotOutputDirectory
+        if let snapshotDirectory { prepareSnapshotData(snapshotDirectory) }
         buildMenu()
         window = FocusWindow(contentRect: (NSScreen.main?.frame ?? NSRect(x: 0, y: 0, width: 1440, height: 900)), styleMask: [.borderless, .resizable], backing: .buffered, defer: false)
         window.title = "Kodmoz Writer"; window.titleVisibility = .hidden; window.titlebarAppearsTransparent = true
@@ -1219,25 +1224,114 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextViewDelegate, NS
         NSApp.activate(ignoringOtherApps: true)
         NSApp.presentationOptions = [.autoHideDock, .autoHideMenuBar]
         windowDidResize(Notification(name: NSWindow.didResizeNotification))
-        if let index = CommandLine.arguments.firstIndex(of: "--snapshot"), CommandLine.arguments.count > index + 1 {
-            runSnapshotMode(CommandLine.arguments[index + 1])
+        if let snapshotDirectory {
+            runSnapshotMode(snapshotDirectory)
         }
+    }
+    var snapshotOutputDirectory: String? {
+        guard let index = CommandLine.arguments.firstIndex(of: "--snapshot"), CommandLine.arguments.count > index + 1 else { return nil }
+        return CommandLine.arguments[index + 1]
+    }
+    // Screenshots must never read or write the writer's real notes, so the snapshot
+    // run uses its own data folder and defaults suite with presentation content.
+    func prepareSnapshotData(_ directory: String) {
+        let root = URL(fileURLWithPath: directory, isDirectory: true)
+        let data = root.appendingPathComponent("data", isDirectory: true)
+        try? FileManager.default.removeItem(at: data)
+        try? FileManager.default.createDirectory(at: data.appendingPathComponent("Notes", isDirectory: true), withIntermediateDirectories: true)
+        Self.dataFolderOverride = data
+
+        let suite = "com.kodmoz.focuswriter.snapshot"
+        if let snapshotDefaults = UserDefaults(suiteName: suite) {
+            snapshotDefaults.removePersistentDomain(forName: suite)
+            snapshotDefaults.set("scene", forKey: "kind")
+            snapshotDefaults.set(1, forKey: "scene")
+            snapshotDefaults.set(0, forKey: "noteSort")
+            snapshotDefaults.set(true, forKey: "legacyDraftMigrated")
+            defaults = snapshotDefaults
+        }
+
+        let now = Date()
+        let demos: [(id: String, text: String, updatedAgo: TimeInterval)] = [
+            ("demo-morning", """
+            Sabah ışığı, açık bir sayfa
+
+            Gün doğmadan önce yazmaya başlıyorum. Ekranda yalnızca metin var; başlık çubuğu, araç çubuğu, bildirim yok.
+
+            Bu uygulama tam da bunun için: dikkatimi dağıtan her şeyi geride bırakmak. Arka planda bir manzara, ortada bir yazı sütunu, aşağıda sessizce akan kelime sayısı.
+
+            Bir cümleye başladığımda geri kalanı kendiliğinden geliyor. Kelimeler birikiyor, paragraflar uzuyor, sayfa yavaşça doluyor.
+
+            Bazen durup manzaraya bakıyorum. Sonra yeniden yazıyorum.
+            """, 0),
+            ("demo-ideas", """
+            Yeni yazı fikri
+
+            Kısa bir deneme: yazmanın en zor kısmı ilk cümleyi kurmak değil, dikkatini tek bir yerde tutmak.
+
+            Bir zamanlayıcı kur. On beş dakika boyunca hiçbir şeye bakma. Sadece yaz.
+            """, 1_560),
+            ("demo-reading", """
+            Okuma notları
+
+            İyi bir metin, okuru yavaşlatır. Cümleler acele etmez; her paragraf bir sonrakine yer açar.
+
+            Altını çizdiğim yerleri kendi cümlelerimle yeniden yazmak, okuduğumu gerçekten anlayıp anlamadığımı gösteriyor.
+            """, 10_800),
+            ("demo-weekly", """
+            Haftalık plan
+
+            Pazartesi: taslağı bitir.
+            Çarşamba: düzenle ve kısalt.
+            Cuma: yayına hazırla.
+            """, 86_400)
+        ]
+        var dates: [String: NoteDates] = [:]
+        for demo in demos {
+            let url = notesFolder.appendingPathComponent(demo.id).appendingPathExtension("rtf")
+            try? demoRTF(demo.text).write(to: url, options: .atomic)
+            let updated = now.addingTimeInterval(-demo.updatedAgo)
+            let created = updated.addingTimeInterval(-172_800)
+            try? FileManager.default.setAttributes([.creationDate: created, .modificationDate: updated], ofItemAtPath: url.path)
+            dates[demo.id] = NoteDates(createdAt: created, updatedAt: updated)
+        }
+        if let data = try? JSONEncoder().encode(dates) {
+            try? data.write(to: metadataURL, options: .atomic)
+        }
+        defaults.set(demos[0].id, forKey: "activeNote")
+    }
+    func demoRTF(_ text: String) -> Data {
+        let paragraph = NSMutableParagraphStyle()
+        paragraph.lineSpacing = Theme.writingSize * 0.72
+        paragraph.paragraphSpacing = Theme.writingSize * 0.55
+        let attributed = NSMutableAttributedString(string: text, attributes: [
+            .font: Theme.writingFont(),
+            .foregroundColor: NSColor.white,
+            .paragraphStyle: paragraph
+        ])
+        let emphasis = "sessizce akan kelime sayısı"
+        if let range = text.range(of: emphasis) {
+            attributed.addAttribute(.font, value: NSFontManager.shared.convert(Theme.writingFont(), toHaveTrait: .boldFontMask), range: NSRange(range, in: text))
+        }
+        return attributed.rtf(from: NSRange(location: 0, length: attributed.length), documentAttributes: [:])!
     }
     func runSnapshotMode(_ directory: String) {
         try? FileManager.default.createDirectory(atPath: directory, withIntermediateDirectories: true)
-        snapshotView(background, to: directory + "/writing.png")
-        showSidebar()
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.9) { [self] in
-            snapshotView(background, to: directory + "/sidebar.png")
-            showSettings()
-            DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) { [self] in
-                if let content = settings?.contentView { content.displayIfNeeded(); snapshotView(content, to: directory + "/settings.png") }
-                closeSettings()
-                addLink()
-                DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) { [self] in
-                    if let content = linkSheet?.contentView { content.displayIfNeeded(); snapshotView(content, to: directory + "/link.png") }
-                    linkSheet?.dismiss()
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) { NSApp.terminate(nil) }
+            snapshotView(background, to: directory + "/writing.png")
+            showSidebar()
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) { [self] in
+                snapshotView(background, to: directory + "/sidebar.png")
+                showSettings()
+                DispatchQueue.main.asyncAfter(deadline: .now() + 1.2) { [self] in
+                    if let panel = settings { requestWindowCapture(panel, to: directory + "/settings.png", directory: directory) }
+                    closeSettings()
+                    addLink()
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.9) { [self] in
+                        if let panel = linkSheet { requestWindowCapture(panel, to: directory + "/link.png", directory: directory) }
+                        linkSheet?.dismiss()
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) { NSApp.terminate(nil) }
+                    }
                 }
             }
         }
@@ -1247,6 +1341,26 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextViewDelegate, NS
         view.cacheDisplay(in: view.bounds, to: rep)
         guard let data = rep.representation(using: .png, properties: [:]) else { return }
         try? data.write(to: URL(fileURLWithPath: path))
+    }
+    // A view snapshot cannot reproduce behind-window vibrancy, so panels are grabbed
+    // from the live screen by the companion capture script using the reported rect.
+    func requestWindowCapture(_ window: NSWindow, to path: String, directory: String) {
+        let request = directory + "/capture.request"
+        let done = directory + "/capture.done"
+        let frame = window.frame
+        let screenHeight = (window.screen ?? NSScreen.main)!.frame.maxY
+        let rect = "\(Int(frame.minX)),\(Int(screenHeight - frame.maxY)),\(Int(frame.width)),\(Int(frame.height))"
+        try? "\(rect)\n\(path)".write(toFile: request, atomically: true, encoding: .utf8)
+        let deadline = Date().addingTimeInterval(10)
+        while !FileManager.default.fileExists(atPath: done) && Date() < deadline {
+            // Blocking sleep, not a nested run loop: re-entering the main queue here
+            // would fire the next scheduled capture step while this one waits.
+            Thread.sleep(forTimeInterval: 0.05)
+        }
+        let captured = FileManager.default.fileExists(atPath: path)
+        try? FileManager.default.removeItem(atPath: request)
+        try? FileManager.default.removeItem(atPath: done)
+        if !captured, let content = window.contentView { snapshotView(content, to: path) }
     }
     func buildMenu() {
         let menu = NSMenu()
